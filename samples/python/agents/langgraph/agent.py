@@ -1,4 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
@@ -25,7 +25,7 @@ def get_exchange_rate(
 
     Returns:
         A dictionary containing the exchange rate data, or an error message if the request fails.
-    """    
+    """
     try:
         response = httpx.get(
             f"https://api.frankfurter.app/{currency_date}",
@@ -60,9 +60,9 @@ class CurrencyAgent:
         "Set response status to error if there is an error while processing the request."
         "Set response status to completed if the request is complete."
     )
-     
+
     def __init__(self):
-        self.model = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+        self.model = ChatOpenAI(model="gpt-4-turbo-2024-04-09")
         self.tools = [get_exchange_rate]
 
         self.graph = create_react_agent(
@@ -71,7 +71,7 @@ class CurrencyAgent:
 
     def invoke(self, query, sessionId) -> str:
         config = {"configurable": {"thread_id": sessionId}}
-        self.graph.invoke({"messages": [("user", query)]}, config)        
+        self.graph.invoke({"messages": [("user", query)]}, config)
         return self.get_agent_response(config)
 
     async def stream(self, query, sessionId) -> AsyncIterable[Dict[str, Any]]:
@@ -95,15 +95,15 @@ class CurrencyAgent:
                     "is_task_complete": False,
                     "require_user_input": False,
                     "content": "Processing the exchange rates..",
-                }            
-        
+                }
+
         yield self.get_agent_response(config)
 
-        
+
     def get_agent_response(self, config):
-        current_state = self.graph.get_state(config)        
+        current_state = self.graph.get_state(config)
         structured_response = current_state.values.get('structured_response')
-        if structured_response and isinstance(structured_response, ResponseFormat): 
+        if structured_response and isinstance(structured_response, ResponseFormat):
             if structured_response.status == "input_required":
                 return {
                     "is_task_complete": False,

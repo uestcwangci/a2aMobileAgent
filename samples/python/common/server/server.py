@@ -20,7 +20,7 @@ from common.types import (
 from pydantic import ValidationError
 import json
 from typing import AsyncIterable, Any
-from common.server.task_manager import TaskManager
+from common.server.task_manager import TaskManager, InMemoryTaskManager
 
 import logging
 
@@ -118,3 +118,7 @@ class A2AServer:
         else:
             logger.error(f"Unexpected result type: {type(result)}")
             raise ValueError(f"Unexpected result type: {type(result)}")
+
+if __name__ == "__main__":
+    server = A2AServer(agent_card=AgentCard(name="Test Agent"), task_manager=InMemoryTaskManager())
+    server.start()
