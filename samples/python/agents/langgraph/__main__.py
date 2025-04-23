@@ -1,12 +1,13 @@
 from common.server import A2AServer
-from common.types import AgentCard, AgentCapabilities, AgentSkill, MissingAPIKeyError
+from common.types import AgentCard, AgentCapabilities, MissingAPIKeyError
 from common.utils.push_notification_auth import PushNotificationSenderAuth
 from agents.langgraph.task_manager import AgentTaskManager
-from agents.langgraph.agent import CurrencyAgent
 import click
 import os
 import logging
 from dotenv import load_dotenv
+
+from agents.langgraph.mutil_agent.mobile_agent import MobileInteractionAgent, mobile_skill
 
 load_dotenv()
 
@@ -23,29 +24,33 @@ def main(host, port):
             raise MissingAPIKeyError("OPENAI_API_KEY environment variable not set.")
 
         capabilities = AgentCapabilities(streaming=True, pushNotifications=True)
-        skill = AgentSkill(
-            id="convert_currency",
-            name="Currency Exchange Rates Tool",
-            description="Helps with exchange values between various currencies",
-            tags=["currency conversion", "currency exchange"],
-            examples=["What is exchange rate between USD and GBP?"],
-        )
+
         agent_card = AgentCard(
-            name="Currency Agent",
-            description="Helps with exchange rates for currencies",
+            name="Mobile Automation Assistant",
+            description="""An intelligent agent specialized in Android device automation.
+
+        Core Features:
+        - Precise touch interaction execution
+        - Text input and navigation
+        - Screenshot capture and analysis
+        - Complex task sequencing
+        - Error handling and recovery
+        - Natural interaction patterns
+
+        Designed for automated mobile testing, UI navigation, and task automation while maintaining human-like interaction patterns.""",
             url=f"http://{host}:{port}/",
             version="1.0.0",
-            defaultInputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
-            defaultOutputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
+            defaultInputModes=MobileInteractionAgent.SUPPORTED_CONTENT_TYPES,
+            defaultOutputModes=MobileInteractionAgent.SUPPORTED_CONTENT_TYPES,
             capabilities=capabilities,
-            skills=[skill],
+            skills=[mobile_skill]
         )
 
         notification_sender_auth = PushNotificationSenderAuth()
         notification_sender_auth.generate_jwk()
         server = A2AServer(
             agent_card=agent_card,
-            task_manager=AgentTaskManager(agent=CurrencyAgent(), notification_sender_auth=notification_sender_auth),
+            task_manager=AgentTaskManager(agent=MobileInteractionAgent("10.0.0.51:5555"), notification_sender_auth=notification_sender_auth),
             host=host,
             port=port,
         )

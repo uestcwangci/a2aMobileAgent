@@ -100,6 +100,7 @@ async def completeTask(client: A2AClient, streaming, use_push_notifications: boo
         "sessionId": sessionId,
         "acceptedOutputModes": ["text"],
         "message": message,
+        "metadata": {"testKey": "testValue"},
     }
 
     if use_push_notifications:

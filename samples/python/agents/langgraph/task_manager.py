@@ -24,7 +24,7 @@ from common.types import (
     InvalidParamsError,
 )
 from common.server.task_manager import InMemoryTaskManager
-from agents.langgraph.agent import CurrencyAgent
+from agents.langgraph.mutil_agent.base_agent import BaseAgent
 from common.utils.push_notification_auth import PushNotificationSenderAuth
 import common.server.utils as utils
 from typing import Union
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class AgentTaskManager(InMemoryTaskManager):
-    def __init__(self, agent: CurrencyAgent, notification_sender_auth: PushNotificationSenderAuth):
+    def __init__(self, agent: BaseAgent, notification_sender_auth: PushNotificationSenderAuth):
         super().__init__()
         self.agent = agent
         self.notification_sender_auth = notification_sender_auth
@@ -102,12 +102,12 @@ class AgentTaskManager(InMemoryTaskManager):
     ) -> JSONRPCResponse | None:
         task_send_params: TaskSendParams = request.params
         if not utils.are_modalities_compatible(
-            task_send_params.acceptedOutputModes, CurrencyAgent.SUPPORTED_CONTENT_TYPES
+            task_send_params.acceptedOutputModes, BaseAgent.SUPPORTED_CONTENT_TYPES
         ):
             logger.warning(
                 "Unsupported output mode. Received %s, Support %s",
                 task_send_params.acceptedOutputModes,
-                CurrencyAgent.SUPPORTED_CONTENT_TYPES,
+                BaseAgent.SUPPORTED_CONTENT_TYPES,
             )
             return utils.new_incompatible_types_error(request.id)
         
