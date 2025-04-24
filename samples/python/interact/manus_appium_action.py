@@ -114,7 +114,7 @@ class AppiumAction(AppiumBaseAction):
             logger.error(f"Error checking driver state: {str(e)}")
             return False
 
-    def _safe_quit(self):
+    def safe_quit(self):
         """安全地关闭 driver"""
         if not self.driver:
             return {'success': True, 'message': 'Driver already None'}
@@ -244,5 +244,5 @@ class AppiumAction(AppiumBaseAction):
     def _quit(self):
         self.dismiss_action_pointer()
         self.driver.terminate_app(self.desired_caps["appium:appPackage"])
-        self._safe_quit()
+        self.safe_quit()
         logger.info("Appium driver quit")

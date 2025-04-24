@@ -1,11 +1,16 @@
 import json
-from typing import Callable, List
+from typing import AsyncIterable, Dict, Any
+
+from langchain.tools import Tool
+from langchain.tools import tool
 
 from agents.langgraph.mutil_agent.base_agent import BaseAgent
-from langchain_core.tools import tool
-
+from aliyun.instance_manager import InstanceManager
+from session_manager import SessionManager
 from common.types import AgentSkill
-from interact.manus_appium_action import AppiumAction
+
+instance_manager = InstanceManager()
+session_manager = SessionManager()
 
 mobile_skill = AgentSkill(
             id="execute_action",
@@ -38,11 +43,68 @@ This tool supports natural, human-like interaction patterns while maintaining pr
             ]
         )
 
+@tool
+def execute_action(action: str, params: json, **kwargs) -> json:
+    """
+   Execute a specific action on the mobile device.
+
+   :param action: The action to be performed. Available actions include:
+       - click: Single tap at specified coordinates
+       - type: Input text at specified coordinates
+       - long_press: Press and hold at coordinates
+       - screen_shot: Capture current screen and return image URL
+       - double_click: Two quick taps at coordinates
+       - back: Return to previous screen
+       - scroll: Scroll from start to end coordinates
+       - open_app: Launch or switch to an app
+       - press_enter: Send keycode for enter
+       - press_search: Send keycode for search
+       - done: Complete the task
+
+   :param params: Parameters for the action, varying by action type:
+       - For click/double_click/long_press: {"x": int, "y": int}
+       - For type: {"x": int, "y": int, "text": str}
+       - For scroll: {"start": [x, y], "end": [x, y]}
+       - For open_app: {"app_name": str}
+       - For screen_shot/back/press_enter/press_search/done: {}
+
+    :param context: Contextual information, including instance ID and thread ID.
+
+   :return: Dictionary containing execution result:
+       - On success: {"success": True, "message": "action info", "screenshot":${img_url} # Only for screen_shot action }
+       - On failure: {"success": False, "message": "error message"}
+
+   Example:
+       execute_action("click", {"x": 100, "y": 100})
+       {"success": True, "message": "Clicked at (100, 100)"}
+
+       execute_action("type", {"x": 100, "y": 100, "text": "Hello"})
+       {"success": True, "message": "Typed 'Hello' at (100, 100)"}
+
+       execute_action("scroll", {"start": [100, 200], "end": [100, 500]})
+       {"success": True, "message": "Scrolled from [100, 200] to [100, 500]"}
+           """
+    config = kwargs.get("config", {})
+    ## config = {"configurable": {"thread_id": session_id}}
+    session_id = config.get("configurable", {}).get("thread_id", "unknown")
+    print("Thread ID from config: {session_id}")
+
+    ## meta_data = {"instanceId": instanceId}
+    meta_data = session_manager.get_meta(session_id)
+    if not meta_data:
+        return {
+            "success": False,
+            "message": "Invalid session ID or session not found."
+        }
+    instance_id = meta_data.get("instanceId")
+    appium_action = instance_manager.get_or_create_client(instance_id)
+    return appium_action.execute(action, params)
 
 class MobileInteractionAgent(BaseAgent):
-    def __init__(self, udid):
-        super().__init__([self.execute_action])
-        self.appium_action = AppiumAction(udid)
+    def __init__(self) -> None:
+        tools = [execute_action]  # 创建工具列表
+        super().__init__(tools=tools)  # 使用关键字参数传递
+
 
     @property
     def SYSTEM_INSTRUCTION(self) -> str:
@@ -94,45 +156,65 @@ IMPORTANT: Only use the actions and parameters exactly as defined in the execute
 
 For all actions, provide clear reasoning for your choices and explain your strategy when executing multi-step tasks."""
 
-    @tool
-    def execute_action(self, action: str, params: json) -> json:
-        """
-Execute a specific action on the mobile device.
 
-:param action: The action to be performed. Available actions include:
-    - click: Single tap at specified coordinates
-    - type: Input text at specified coordinates
-    - long_press: Press and hold at coordinates
-    - screen_shot: Capture current screen and return image URL
-    - double_click: Two quick taps at coordinates
-    - back: Return to previous screen
-    - scroll: Scroll from start to end coordinates
-    - open_app: Launch or switch to an app
-    - press_enter: Send keycode for enter
-    - press_search: Send keycode for search
-    - done: Complete the task
-
-:param params: Parameters for the action, varying by action type:
-    - For click/double_click/long_press: {"x": int, "y": int}
-    - For type: {"x": int, "y": int, "text": str}
-    - For scroll: {"start": [x, y], "end": [x, y]}
-    - For open_app: {"app_name": str}
-    - For screen_shot/back/press_enter/press_search/done: {}
-
-:return: Dictionary containing execution result:
-    - On success: {"success": True, "message": "action info", "screenshot":${img_url} # Only for screen_shot action }
-    - On failure: {"success": False, "message": "error message"}
-
-Example:
-    >>> execute_action("click", {"x": 100, "y": 100})
-    {"success": True, "message": "Clicked at (100, 100)"}
-
-    >>> execute_action("type", {"x": 100, "y": 100, "text": "Hello"})
-    {"success": True, "message": "Typed 'Hello' at (100, 100)"}
-
-    >>> execute_action("scroll", {"start": [100, 200], "end": [100, 500]})
-    {"success": True, "message": "Scrolled from [100, 200] to [100, 500]"}
-        """
-        result = self.appium_action.execute(action, params)
-        return result
-
+# 自定义工具
+# class ExecuteActionTool(Tool):
+#     name = "execute_action"
+#     description = """
+#    Execute a specific action on the mobile device.
+#
+#    :param action: The action to be performed. Available actions include:
+#        - click: Single tap at specified coordinates
+#        - type: Input text at specified coordinates
+#        - long_press: Press and hold at coordinates
+#        - screen_shot: Capture current screen and return image URL
+#        - double_click: Two quick taps at coordinates
+#        - back: Return to previous screen
+#        - scroll: Scroll from start to end coordinates
+#        - open_app: Launch or switch to an app
+#        - press_enter: Send keycode for enter
+#        - press_search: Send keycode for search
+#        - done: Complete the task
+#
+#    :param params: Parameters for the action, varying by action type:
+#        - For click/double_click/long_press: {"x": int, "y": int}
+#        - For type: {"x": int, "y": int, "text": str}
+#        - For scroll: {"start": [x, y], "end": [x, y]}
+#        - For open_app: {"app_name": str}
+#        - For screen_shot/back/press_enter/press_search/done: {}
+#
+#     :param context: Contextual information, including instance ID and thread ID.
+#
+#    :return: Dictionary containing execution result:
+#        - On success: {"success": True, "message": "action info", "screenshot":${img_url} # Only for screen_shot action }
+#        - On failure: {"success": False, "message": "error message"}
+#
+#    Example:
+#        execute_action("click", {"x": 100, "y": 100})
+#        {"success": True, "message": "Clicked at (100, 100)"}
+#
+#        execute_action("type", {"x": 100, "y": 100, "text": "Hello"})
+#        {"success": True, "message": "Typed 'Hello' at (100, 100)"}
+#
+#        execute_action("scroll", {"start": [100, 200], "end": [100, 500]})
+#        {"success": True, "message": "Scrolled from [100, 200] to [100, 500]"}
+#            """
+#     args_schema = MobileInteractionAgent
+#
+#     def _run(self, action: str, params: dict, **kwargs) -> dict:
+#         # 在这里可以访问 config（通过 kwargs）
+#         config = kwargs.get("config", {})
+#         ## config = {"configurable": {"thread_id": session_id}}
+#         session_id = config.get("configurable", {}).get("thread_id", "unknown")
+#         print("Thread ID from config: {session_id}")
+#
+#         ## meta_data = {"instanceId": instanceId}
+#         meta_data = session_manager.get_meta(session_id)
+#         if not meta_data:
+#             return {
+#                 "success": False,
+#                 "message": "Invalid session ID or session not found."
+#             }
+#         instance_id = meta_data.get("instanceId")
+#         appium_action = instance_manager.get_or_create_client(instance_id)
+#         return appium_action.execute(action, params)

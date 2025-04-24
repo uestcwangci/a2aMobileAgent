@@ -62,7 +62,7 @@ class CurrencyAgent:
     )
 
     def __init__(self):
-        self.model = ChatOpenAI(model="gpt-4-turbo-2024-04-09")
+        self.model = ChatOpenAI(model="claude35_sonnet2")
         self.tools = [get_exchange_rate]
 
         self.graph = create_react_agent(

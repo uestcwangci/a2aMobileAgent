@@ -31,8 +31,12 @@ from typing import Union
 import asyncio
 import logging
 import traceback
-
+from session_manager import SessionManager
+from aliyun.instance_manager import InstanceManager
 logger = logging.getLogger(__name__)
+
+session_manager = SessionManager()
+instance_manager = InstanceManager()
 
 
 class AgentTaskManager(InMemoryTaskManager):
@@ -116,7 +120,27 @@ class AgentTaskManager(InMemoryTaskManager):
             return JSONRPCResponse(id=request.id, error=InvalidParamsError(message="Push notification URL is missing"))
         
         return None
-        
+
+    def _validate_session(self, task_send_params: TaskSendParams) -> JSONRPCResponse | None:
+        """验证会话参数的完整性。
+
+        Args:
+            task_send_params: 任务发送参数
+
+        Returns:
+            JSONRPCResponse: 如果验证失败返回错误响应
+            None: 验证通过返回 None
+        """
+        session_id: str | None = task_send_params.sessionId
+        metadata: dict | None = task_send_params.metadata
+        instance_id: str | None = metadata.get("instanceId") if metadata else None
+
+        if not all([session_id, metadata, instance_id]):
+            logger.warning("Session ID, metadata or instance ID is missing")
+            return JSONRPCResponse(id=task_send_params.id,
+                                   error=InvalidParamsError(message="Session ID, metadata or instance ID is missing"))
+        return None
+
     async def on_send_task(self, request: SendTaskRequest) -> SendTaskResponse:
         """Handles the 'send task' request."""
         validation_error = self._validate_request(request)
@@ -159,7 +183,12 @@ class AgentTaskManager(InMemoryTaskManager):
                     return JSONRPCResponse(id=request.id, error=InvalidParamsError(message="Push notification URL is invalid"))
 
             task_send_params: TaskSendParams = request.params
-            sse_event_queue = await self.setup_sse_consumer(task_send_params.id, False)            
+            sse_event_queue = await self.setup_sse_consumer(task_send_params.id, False)
+            session_error = self._validate_session(task_send_params)
+            if session_error:
+                return session_error
+            session_manager.put_meta(task_send_params.sessionId, task_send_params.metadata)
+            instance_manager.get_or_create_client(task_send_params.metadata.get("instanceId"))
 
             asyncio.create_task(self._run_streaming_agent(request))
 

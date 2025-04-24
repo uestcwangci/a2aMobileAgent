@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, AsyncIterable, List, Callable
+
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
@@ -8,6 +10,16 @@ from pydantic import BaseModel
 from typing import Literal
 
 memory = MemorySaver()
+
+# 回调处理器
+class ConfigCallbackHandler(BaseCallbackHandler):
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+
+    def on_tool_start(self, serialized: dict, inputs: dict, **kwargs) -> None:
+        # 将 config 注入到工具的输入中
+        inputs["config"] = self.config
+
 
 class ResponseFormat(BaseModel):
     """Respond to the user in this format."""
@@ -29,7 +41,7 @@ class BaseAgent(ABC):
         Args:
             tools: 必须是被 @tool 装饰器修饰的函数列表
         """
-        self.model = ChatOpenAI(model="gpt-4-turbo-2024-04-09")
+        self.model = ChatOpenAI(model="claude35_sonnet2")
         self.tools = tools if tools is not None else []
 
         self.graph = create_react_agent(
@@ -42,7 +54,8 @@ class BaseAgent(ABC):
 
     def invoke(self, query: str, session_id: str) -> Dict[str, Any]:
         config = {"configurable": {"thread_id": session_id}}
-        self.graph.invoke({"messages": [("user", query)]}, config)
+        bound_graph = self.graph.bind(config=config)
+        bound_graph.invoke({"messages": [("user", query)]}, config=config, callbacks=ConfigCallbackHandler(config))
         return self.get_agent_response(config)
 
     async def stream(self, query: str, session_id: str) -> AsyncIterable[Dict[str, Any]]:
