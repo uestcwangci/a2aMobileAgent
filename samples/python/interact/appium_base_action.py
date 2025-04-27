@@ -448,6 +448,7 @@ class AppiumBaseAction:
                 return
 
             # 执行重启操作
+            self.driver.terminate_app(app_package)
             self.driver.activate_app(app_package)
 
         except Exception as e:

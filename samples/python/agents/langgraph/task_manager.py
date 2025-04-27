@@ -24,7 +24,7 @@ from common.types import (
     InvalidParamsError,
 )
 from common.server.task_manager import InMemoryTaskManager
-from agents.langgraph.mutil_agent.base_agent import BaseAgent
+from agents.langgraph.mutil_agent.mobile_agent import MobileInteractionAgent
 from common.utils.push_notification_auth import PushNotificationSenderAuth
 import common.server.utils as utils
 from typing import Union
@@ -40,7 +40,7 @@ instance_manager = InstanceManager()
 
 
 class AgentTaskManager(InMemoryTaskManager):
-    def __init__(self, agent: BaseAgent, notification_sender_auth: PushNotificationSenderAuth):
+    def __init__(self, agent: MobileInteractionAgent, notification_sender_auth: PushNotificationSenderAuth):
         super().__init__()
         self.agent = agent
         self.notification_sender_auth = notification_sender_auth
@@ -48,9 +48,12 @@ class AgentTaskManager(InMemoryTaskManager):
     async def _run_streaming_agent(self, request: SendTaskStreamingRequest):
         task_send_params: TaskSendParams = request.params
         query = self._get_user_query(task_send_params)
+        session_manager.put_meta(task_send_params.sessionId, task_send_params.metadata)
+        appium_action = instance_manager.get_or_create_client(task_send_params.metadata.get("instanceId"))
+        image_url = appium_action.execute("screenshot").get("screenshot")
 
         try:
-            async for item in self.agent.stream(query, task_send_params.sessionId):
+            async for item in self.agent.stream(query, image_url, task_send_params.sessionId, task_send_params.metadata):
                 is_task_complete = item["is_task_complete"]
                 require_user_input = item["require_user_input"]
                 artifact = None
@@ -106,12 +109,12 @@ class AgentTaskManager(InMemoryTaskManager):
     ) -> JSONRPCResponse | None:
         task_send_params: TaskSendParams = request.params
         if not utils.are_modalities_compatible(
-            task_send_params.acceptedOutputModes, BaseAgent.SUPPORTED_CONTENT_TYPES
+            task_send_params.acceptedOutputModes, MobileInteractionAgent.SUPPORTED_CONTENT_TYPES
         ):
             logger.warning(
                 "Unsupported output mode. Received %s, Support %s",
                 task_send_params.acceptedOutputModes,
-                BaseAgent.SUPPORTED_CONTENT_TYPES,
+                MobileInteractionAgent.SUPPORTED_CONTENT_TYPES,
             )
             return utils.new_incompatible_types_error(request.id)
         
@@ -143,6 +146,7 @@ class AgentTaskManager(InMemoryTaskManager):
 
     async def on_send_task(self, request: SendTaskRequest) -> SendTaskResponse:
         """Handles the 'send task' request."""
+        logger.info(f"on_send_task {request.id} {request.params.sessionId}")
         validation_error = self._validate_request(request)
         if validation_error:
             return SendTaskResponse(id=request.id, error=validation_error.error)
@@ -160,7 +164,9 @@ class AgentTaskManager(InMemoryTaskManager):
         task_send_params: TaskSendParams = request.params
         query = self._get_user_query(task_send_params)
         try:
-            agent_response = self.agent.invoke(query, task_send_params.sessionId)
+            appium_action = instance_manager.get_or_create_client(task_send_params.metadata.get("instanceId"))
+            image_url = appium_action.execute("screenshot").get("screenshot")
+            agent_response = self.agent.invoke(query, image_url, task_send_params.sessionId, task_send_params.metadata)
         except Exception as e:
             logger.error(f"Error invoking agent: {e}")
             raise ValueError(f"Error invoking agent: {e}")
@@ -171,6 +177,7 @@ class AgentTaskManager(InMemoryTaskManager):
     async def on_send_task_subscribe(
         self, request: SendTaskStreamingRequest
     ) -> AsyncIterable[SendTaskStreamingResponse] | JSONRPCResponse:
+        logger.info(f"on_send_task_subscribe {request.id} {request.params.sessionId}")
         try:
             error = self._validate_request(request)
             if error:
@@ -187,8 +194,6 @@ class AgentTaskManager(InMemoryTaskManager):
             session_error = self._validate_session(task_send_params)
             if session_error:
                 return session_error
-            session_manager.put_meta(task_send_params.sessionId, task_send_params.metadata)
-            instance_manager.get_or_create_client(task_send_params.metadata.get("instanceId"))
 
             asyncio.create_task(self._run_streaming_agent(request))
 

@@ -50,7 +50,7 @@ def main(host, port):
         notification_sender_auth.generate_jwk()
         server = A2AServer(
             agent_card=agent_card,
-            task_manager=AgentTaskManager(agent=MobileInteractionAgent("10.0.0.51:5555"), notification_sender_auth=notification_sender_auth),
+            task_manager=AgentTaskManager(agent=MobileInteractionAgent(), notification_sender_auth=notification_sender_auth),
             host=host,
             port=port,
         )

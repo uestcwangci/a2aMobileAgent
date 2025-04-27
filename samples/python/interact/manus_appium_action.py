@@ -3,12 +3,12 @@ import mimetypes
 import os
 import time
 from http.client import HTTPConnection
-from typing import Literal
+from typing import Literal, Dict
 from urllib.parse import urlparse
 
 from appium.options.android import UiAutomator2Options
 from selenium.webdriver.support.wait import WebDriverWait
-
+import requests
 from interact.appium_base_action import AppiumBaseAction, AppiumDriverWrapper, session_timeout_seconds
 from interact.molecular import Molecular
 from my_utils.logger_util import logger
@@ -16,7 +16,7 @@ from my_utils.logger_util import logger
 ACCESS_TOKEN = "lGqMusyvAMqNJEJLmgZanGPAgPNdEtNBwZJAnAxndkE"  # 替换为你的DingTalk token
 
 _open_app_dict = {
-    "DingTalk": {"app_package": ".biz.LaunchHomeActivity", "app_activity": ".biz.LaunchHomeActivity"}
+    "dingtalk": {"app_package": "com.alibaba.android.rimet", "app_activity": ".biz.LaunchHomeActivity"}
 }
 
 def upload_file_source_to_cdn(source: str | bytes, file_type: Literal['image', 'video'], filename: str = None) -> str:
@@ -71,24 +71,47 @@ def upload_file_source_to_cdn(source: str | bytes, file_type: Literal['image', '
 def on_timeout(device_id):
     logger.warning(f"{device_id} Timeout or session disconnect detected！")
 
+"""
+在同一个设备（相同的 udid）上，即使 session ID 不同，它们的 newCommandTimeout 也会相互影响。这是因为：
+不同设备（不同 udid）的 session 是相互独立的，它们的 newCommandTimeout 不会互相影响
+1.实际上这些 session 共享同一个底层的 UiAutomator2 服务器实例（因为是同一个设备）
+2.最新创建的 session 会重置计时器，但计时器是在设备级别共享的
+3.当任何一个 session 的计时器触发超时，可能会影响到该设备上的其他 session
+"""
+class AppiumSessionManager:
+    def __init__(self):
+        self.base_url = 'http://localhost:4723'
+
+    def cleanup_device_sessions(self, udid):
+        try:
+            sessions = requests.get(f'{self.base_url}/sessions').json()['value']
+            for session in sessions:
+                if session['capabilities'].get('udid') == udid or \
+                        session['capabilities'].get('appium:udid') == udid:
+                    requests.delete(f'{self.base_url}/session/{session["id"]}')
+                    logger.info(f"Cleaned up session for {udid}: {session['id']}")
+        except Exception as e:
+            logger.error(f"Error cleaning up sessions for {udid}: {e}")
+
+    def create_session(self, desired_caps):
+        udid = desired_caps.get('appium:udid')
+        self.cleanup_device_sessions(udid)
+        driver = AppiumDriverWrapper(self.base_url,
+                                     options=UiAutomator2Options().load_capabilities(desired_caps),
+                                     timeout_seconds=session_timeout_seconds,
+                                     callback=lambda: on_timeout(udid))
+        return driver
+
+session_manager = AppiumSessionManager()
 
 class AppiumAction(AppiumBaseAction):
     def __init__(self, udid):
         super().__init__(udid)
-        if not self._check_driver_state():
-            self.driver = AppiumDriverWrapper('http://localhost:4723',
-                                              options=UiAutomator2Options().load_capabilities(self.desired_caps),
-                                              timeout_seconds=session_timeout_seconds,
-                                              callback=lambda: on_timeout(self.desired_caps["appium:udid"]))
-            logger.info("Appium driver initialized")
-            # WebDriverWait(self.driver, timeout=30).until(
-            #     lambda driver: driver.current_activity == self.desired_caps["appium:appActivity"]
-            # )
-            # logger.info(f"Application {self.desired_caps['appium:appActivity']} is ready")
-            time.sleep(3)
-            # 传递 driver 给 Molecular
-            self.molecular = Molecular(self.udid, driver=self.driver)
-            self.show_action_pointer()
+        self.driver = session_manager.create_session(self.desired_caps)
+        logger.info("Appium driver initialized")
+        time.sleep(3)
+        self.molecular = Molecular(self.udid, driver=self.driver)
+        self.show_action_pointer()
 
     def _check_driver_state(self):
         """检查 driver 状态的综合方法"""
@@ -130,7 +153,7 @@ class AppiumAction(AppiumBaseAction):
                     'message': f'Failed to quit driver {str(e)}'
                 }
 
-    def execute(self, action: str, params: json) -> json:
+    def execute(self, action: str, params: Dict = None) -> Dict:
         logger.info(f"Executing action: #{action}# with params: {params}")
         # 检查超时事件
         if self.driver and self.driver.timeout_event.is_set():
@@ -146,7 +169,7 @@ class AppiumAction(AppiumBaseAction):
                 # 返回
                 self.driver.back()
                 return {"message": "Successfully back", "success": True}
-            elif action == "screenshot":
+            elif action == "screenshot" or action == "screen_shot":
                 # 获取 PNG 二进制数据
                 start_time = time.time()
                 screenshot_png = self.driver.get_screenshot_as_png()
@@ -154,7 +177,7 @@ class AppiumAction(AppiumBaseAction):
                 try:
                     # 直接上传二进制数据
                     cdn_url = upload_file_source_to_cdn(screenshot_png, "image", filename="screenshot.png")
-                    return {"message": "Screenshot captured", "screenshot": cdn_url, "success": True}
+                    return {"message": f"Screenshot captured url:{cdn_url}", "screenshot": cdn_url, "success": True}
                 except Exception as e:
                     logger.error(f"Error uploading screenshot: {str(e)}")
                     return {"message": f"Error uploading screenshot: {str(e)}", "success": False}
@@ -213,7 +236,7 @@ class AppiumAction(AppiumBaseAction):
                 self.driver.execute_script("mobile: stopScreenStreaming")
                 return {"message": "Screen streaming stopped", "success": True}
             elif action == "open_app":
-                app_name = params.get("app_name")
+                app_name = (params.get("app_name") or "").lower()
                 app_package = _open_app_dict[app_name]["app_package"]
                 app_activity = _open_app_dict[app_name]["app_activity"]
                 self.open_app(app_package, app_activity)
