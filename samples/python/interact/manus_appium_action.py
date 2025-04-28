@@ -15,7 +15,7 @@ from my_utils.logger_util import logger
 
 ACCESS_TOKEN = "lGqMusyvAMqNJEJLmgZanGPAgPNdEtNBwZJAnAxndkE"  # 替换为你的DingTalk token
 
-_open_app_dict = {
+_launch_app_dict = {
     "dingtalk": {"app_package": "com.alibaba.android.rimet", "app_activity": ".biz.LaunchHomeActivity"}
 }
 
@@ -235,11 +235,11 @@ class AppiumAction(AppiumBaseAction):
             elif action == "stopScreenStreaming":
                 self.driver.execute_script("mobile: stopScreenStreaming")
                 return {"message": "Screen streaming stopped", "success": True}
-            elif action == "open_app":
+            elif action == "launch_app":
                 app_name = (params.get("app_name") or "").lower()
-                app_package = _open_app_dict[app_name]["app_package"]
-                app_activity = _open_app_dict[app_name]["app_activity"]
-                self.open_app(app_package, app_activity)
+                app_package = _launch_app_dict[app_name]["app_package"]
+                app_activity = _launch_app_dict[app_name]["app_activity"]
+                self.launch_app(app_package, app_activity)
                 return {"message": f"Open app {app_name} success", "success": True}
             elif action == "dingtalk_open":
                 return {"message": "dingtalk_open", "success": True}

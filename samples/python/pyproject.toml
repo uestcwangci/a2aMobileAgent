@@ -34,6 +34,8 @@ dependencies = [
     "llama-cloud-services>=0.6.12",
     "llama-index-core>=0.12.30",
     "llama-index-llms-google-genai>=0.1.7",
+    "llama-index-llms-openai>=0.3.38",
+    "llama-index-llms-anthropic>=0.6.10",
 ]
 
 [tool.hatch.build.targets.wheel]

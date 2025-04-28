@@ -424,7 +424,7 @@ class AppiumBaseAction:
         Timer(delay, self.move_action_pointer, args=(start[0], start[1])).start()
         self.driver.swipe(start[0], start[1], end[0], end[1], duration)
 
-    def open_app(self, app_package: str, app_activity: str) -> None:
+    def launch_app(self, app_package: str, app_activity: str) -> None:
         """
         打开指定应用。
         """
@@ -469,4 +469,4 @@ class AppiumBaseAction:
         """
         回到应用主页。
         """
-        self.open_app("com.alibaba.android.rimet", ".biz.LaunchHomeActivity")
+        self.launch_app("com.alibaba.android.rimet", ".biz.LaunchHomeActivity")
