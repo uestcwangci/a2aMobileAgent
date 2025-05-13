@@ -68,7 +68,6 @@ class LlamaIndexTaskManager(InMemoryTaskManager):
                 # Resume with existing context
                 logger.info(f"Resuming session {session_id} with saved context")
                 ctx = Context.from_dict(self.agent, saved_ctx_state)
-                await ctx.set("metadata", task_send_params.metadata)
                 handler = self.agent.run(
                     start_event=task_event,
                     ctx=ctx,
@@ -76,8 +75,11 @@ class LlamaIndexTaskManager(InMemoryTaskManager):
             else:
                 # New session!
                 logger.info(f"Starting new session {session_id}")
+                ctx=Context(self.agent)
+                await ctx.set("metadata", task_send_params.metadata)
                 handler = self.agent.run(
                     start_event=task_event,
+                    ctx=ctx
                 )
 
             # Stream updates as they come
@@ -198,7 +200,6 @@ class LlamaIndexTaskManager(InMemoryTaskManager):
                 # Resume existing conversation
                 logger.info(f"Resuming existing conversation for session {session_id}")
                 ctx = Context.from_dict(self.agent, saved_ctx_state)
-                await ctx.set("metadata", task_send_params.metadata)
                 handler = self.agent.run(
                     start_event=input_event,
                     ctx=ctx,
@@ -206,8 +207,11 @@ class LlamaIndexTaskManager(InMemoryTaskManager):
             else:
                 # New conversation
                 logger.info(f"Starting new conversation for session {session_id}")
+                ctx = Context(self.agent)
+                await ctx.set("metadata", task_send_params.metadata)
                 handler = self.agent.run(
                     start_event=input_event,
+                    ctx=ctx,
                 )
             
             

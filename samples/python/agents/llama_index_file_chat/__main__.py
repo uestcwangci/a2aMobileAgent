@@ -1,8 +1,8 @@
 from common.server import A2AServer
 from common.types import AgentCard, AgentCapabilities, AgentSkill, MissingAPIKeyError
 from common.utils.push_notification_auth import PushNotificationSenderAuth
-from agents.llama_index_file_chat.task_manager import LlamaIndexTaskManager
-from agents.llama_index_file_chat.agent import ParseAndChat
+from agents.llama_index_file_chat.mobile_task_manager import LlamaIndexTaskManager
+from agents.llama_index_file_chat.mobile_agent import MobileInteractionAgent
 import click
 import os
 import logging
@@ -14,29 +14,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @click.command()
-@click.option("--host", "host", default="localhost")
-@click.option("--port", "port", default=10010)
+@click.option("--host", "host", default="0.0.0.0")
+@click.option("--port", "port", default=10000)
 def main(host, port):
     """Starts the Currency Agent server."""
     try:
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise MissingAPIKeyError("GOOGLE_API_KEY environment variable not set.")
-        if not os.getenv("LLAMA_CLOUD_API_KEY"):
-            raise MissingAPIKeyError("LLAMA_CLOUD_API_KEY environment variable not set.")
+        # if not os.getenv("GOOGLE_API_KEY"):
+        #     raise MissingAPIKeyError("GOOGLE_API_KEY environment variable not set.")
+        # if not os.getenv("LLAMA_CLOUD_API_KEY"):
+        #     raise MissingAPIKeyError("LLAMA_CLOUD_API_KEY environment variable not set.")
 
         capabilities = AgentCapabilities(streaming=True, pushNotifications=True)
         
         skill = AgentSkill(
-            id="parse_and_chat",
-            name="Parse and Chat",
-            description="Parses a file and then chats with a user using the parsed content as context.",
-            tags=["parse", "chat", "file", "llama_parse"],
-            examples=["What does this file talk about?"],
+            id="mobile_agent",
+            name="Mobile Agent",
+            description="可以在手机上完成拟人化的功能，包括聊天、创建日程、查询天气等",
+            tags=["手机", "聊天", "日程", "天气"],
+            examples=["给零封发消息", "明天的日程是什么", "今天的天气怎么样"]
         )
 
         agent_card = AgentCard(
-            name="Parse and Chat",
-            description="Parses a file and then chats with a user using the parsed content as context.",
+            name="Mobile Agent",
+            description="可以在手机上完成拟人化的功能，包括聊天、创建日程、查询天气等",
             url=f"http://{host}:{port}/",
             version="1.0.0",
             defaultInputModes=LlamaIndexTaskManager.SUPPORTED_INPUT_TYPES,
@@ -50,7 +50,7 @@ def main(host, port):
         server = A2AServer(
             agent_card=agent_card,
             task_manager=LlamaIndexTaskManager(
-                agent=ParseAndChat(), 
+                agent=MobileInteractionAgent(),
                 notification_sender_auth=notification_sender_auth
             ),
             host=host,
