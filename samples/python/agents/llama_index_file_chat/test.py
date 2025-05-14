@@ -1,44 +1,27 @@
 import os
-import tempfile
-from datetime import datetime
-from llama_index.core.tools import FunctionTool
 from typing import List
 
 import requests
-
-import tiktoken
-from llama_index.llms.openai import OpenAI
-
-from llama_index.core.bridge.pydantic import BaseModel
-from llama_index.core.prompts import PromptTemplate
-
 from llama_index.core.llms import ChatMessage, TextBlock, ImageBlock
+from llama_index.llms.openai_like import OpenAILike
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+import os
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
-from llama_index.llms.openai.utils import GPT4_MODELS, ALL_AVAILABLE_MODELS
-from llama_index.llms.anthropic.utils import ANTHROPIC_MODELS, CLAUDE_MODELS
+load_dotenv()
 
-from llama_index.llms.anthropic import Anthropic
-from llama_index.core import Settings
-tokenizer = Anthropic().tokenizer
-Settings.tokenizer = tokenizer
+class DateTime(BaseModel):
+    date: str = Field(description="日期", examples=["03-29"])
+    time: str = Field(description="时间", examples=["8:30"])
+# 结构化输出模型
+class ActionDecision(BaseModel):
+    apps: List[str] = Field(description="图片中有哪些app", examples=["微信", "钉钉", "QQ", "支付宝"])
+    datetime: DateTime = Field(description="图片显示的时间", examples=[{'date': '03-29'}, {'time': "8:30"}])
+    is_ali_ding: bool = Field(description="是否安装了阿里钉")
 
 
-CUSTOM_MODELS = {
-    "gpt-4o": 128000,
-    "gpt-4o-0513": 127000,
-    "claude35_sonnet2": 200000,
-    "claude-3-5-haiku": 200000,
-    "claude-3-5-sonnet": 200000,
-    "claude-3-5-sonnet-20241022": 200000,
-    "claude-3-5-sonnet-20240620": 200000,
-}
-
-# 更新 GPT4_MODELS
-GPT4_MODELS.update(CUSTOM_MODELS)
-ALL_AVAILABLE_MODELS.update(CUSTOM_MODELS)
-
-ANTHROPIC_MODELS.update(CUSTOM_MODELS)
-CLAUDE_MODELS.update(CUSTOM_MODELS)
 
 img_url="https://opencdn.dingtalk.net/vscode/puppeteer/cloud_runtime/18781d38-3175-48a8-9ab7-ca246cf444be_screenshot.png"
 temp_dir = os.path.join(os.getcwd(), "tmp", "screenshots")
@@ -51,7 +34,7 @@ class ImageDecision(BaseModel):
 # 如果文件夹不存在就创建
 if not os.path.exists(temp_dir):
     os.makedirs(temp_dir)
-temp_image_path = os.path.join(temp_dir, f"screenshot{hash(img_url)}.png")
+temp_image_path = os.path.join(temp_dir, f"screen{hash(img_url)}.png")
 
 img_response = requests.get(img_url, verify=False)
 
@@ -61,26 +44,38 @@ history = [
     ChatMessage(
         role="user",
         blocks=[
-            ImageBlock(path=temp_image_path),
+            ImageBlock(url=img_url),
             TextBlock(text="What is in this image?"),
         ],
     ),
 ]
-# llm = OpenAI(
-#     model="gpt-4.1",
-#     api_key="sk-omnC1J0vKTJKC9sm530cCeFa50A54a73Ab0922Ef869cBd29",
-#     # api_base=os.getenv("OPENAI_API_BASE"),
-#     api_base="https://www.gptapi.us/v1/",
-#     base_url="https://api.gptapi.us",
-# )
-# response = llm.as_structured_llm(ImageDecision).chat(history)
-# print(response.raw)
 
-llm2 = OpenAI(
-    model="gpt-4o-0513",
-    api_key="a775cabefed422a58f16eb8d75d0d34b",
-    # api_base=os.getenv("OPENAI_API_BASE"),
-    api_base="https://idealab.alibaba-inc.com/api/openai/v1"
-)
-response2 = llm2.as_structured_llm(ImageDecision).chat(history)
-print(response2.raw)
+# llm4 = OpenAILike(
+#     model="gpt-4o-0806-global",
+#     api_base="https://idealab.alibaba-inc.com/api/openai/v1",
+#     api_key="",
+#     context_window=200000,
+#     is_chat_model=True,
+#     is_function_calling_model=True,
+# ).as_structured_llm(ActionDecision)
+#
+# response = llm4.chat(history)
+# decision: ActionDecision = response.raw
+# print(decision)
+
+from llama_index.llms.anthropic import Anthropic
+
+llm = Anthropic(
+    model="claude35_sonnet2",
+    api_key=os.getenv("ANTHROPIC_API_KEY")).as_structured_llm(ActionDecision)
+resp = llm.chat(history)
+desc: ActionDecision = resp.raw
+print(desc)
+
+llm = Anthropic(model="claude-3-7-sonnet-20250219",
+                base_url=os.getenv("GPTAPI_US_ANTHROPIC_BASE"),
+                api_key=os.getenv("GPTAPI_US_KEY"),
+                ).as_structured_llm(ActionDecision)
+resp = llm.chat(history)
+desc: ActionDecision = resp.raw
+print(desc)
