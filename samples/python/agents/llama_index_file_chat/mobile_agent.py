@@ -153,13 +153,18 @@ class MobileInteractionAgent(Workflow):
     def __init__(self, timeout: Optional[float] = 300.0, verbose: bool = True):
         super().__init__(timeout=timeout, verbose=verbose)
         self.llm = OpenAILike(
-            model="gpt-4o-0806",
+            model="qwen2.5-vl-72b-instruct",
             api_base=os.getenv("AI_STUDIO_BASE"),
             api_key=os.getenv("AI_STUDIO_API_KEY"),
             context_window=200000,
             is_chat_model=True,
-            is_function_calling_model=True,
+            is_function_calling_model=False,
         ).as_structured_llm(ActionDecision)
+
+        # self.llm = Anthropic(
+        #     model="claude-3-5-sonnet-v2@20241022",
+        #     api_key=os.getenv("ANTHROPIC_API_KEY")
+        # ).as_structured_llm(ActionDecision)
 
         # self.llm = Anthropic(
         #     model="claude-3-7-sonnet-20250219",
@@ -189,6 +194,9 @@ class MobileInteractionAgent(Workflow):
 - scroll：滑动 {"start": [int, int], "end": [int, int]}。描述：从起始坐标滑动到结束坐标，例如：{"start": [400, 400], "end": [500, 500]}。
 - press_enter或press_search：发送回车或搜索按键码。描述：模拟按下回车或搜索键。参数：{}。
 - done：完成任务。描述：表示任务已完成。参数：{}。
+
+复合操作
+- enter_chat: 进入聊天界面。描述：进入聊天界面。参数：{}。
 
 规则：
 - 分析截图URL以理解当前屏幕上下文
@@ -299,6 +307,8 @@ class MobileInteractionAgent(Workflow):
             history = await ctx.get("history", default=[])
             return TaskCompleteEvent(response=f"Task failed: {ev.result['message']}", history=history)
 
+        # 截图前延迟一段时间，以确保操作完成
+        await asyncio.sleep(2)
         # 获取新的截图，继续任务
         screenshot_url = await get_screenshot(ctx)
         ctx.write_event_to_stream(LogEvent(msg=f"Retrieved new screenshot: {screenshot_url}"))

@@ -211,7 +211,7 @@ class AppiumAction(AppiumBaseAction):
             elif action == "type":
                 x = params.get("x")
                 y = params.get("y")
-                text = params.get("value")
+                text = params.get("value") or params.get("text")
                 if text is None:
                     return {"message": "Error: type Missing value", "success": False}
                 self.type(x, y, text)
