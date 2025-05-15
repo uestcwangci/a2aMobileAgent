@@ -1,7 +1,7 @@
 import asyncio
 import json
 from typing import Dict, List, Optional
-
+import aiofiles
 import aiohttp
 import json
 from typing import Dict, Any, List
@@ -72,6 +72,19 @@ class ActionDecision(BaseModel):
     reasoning: str = Field(description="选择该操作的推理过程")
     is_complete: bool = Field(description="任务是否已完成")
 
+    @classmethod
+    def from_json(cls, json_str: str) -> 'ActionDecision':
+        """
+        从JSON字符串创建ActionDecision对象
+        """
+        return cls.model_validate_json(json_str)
+
+    def to_json(self) -> str:
+        """
+        将ActionDecision对象转换为JSON字符串
+        """
+        return self.model_dump_json()
+
     @model_validator(mode="after")
     def validate_action_params(cls, values):
         action = values.action
@@ -93,7 +106,7 @@ class ActionDecision(BaseModel):
 
         # 验证 action 和 params 的匹配
         if action in no_params_actions:
-            if params:
+            if params and parsed_params:
                 raise ValueError(f"Action '{action}' does not require params, but params were provided: {params}")
         elif action in coordinate_actions:
             if not parsed_params.get("x") or not parsed_params.get("y"):
@@ -152,25 +165,24 @@ class TaskCompleteEvent(StopEvent):
 class MobileInteractionAgent(Workflow):
     def __init__(self, timeout: Optional[float] = 300.0, verbose: bool = True):
         super().__init__(timeout=timeout, verbose=verbose)
+        # self.llm = OpenAILike(
+        #     model="qwen2.5-vl-72b-instruct",
+        #     api_base=os.getenv("AI_STUDIO_BASE"),
+        #     api_key=os.getenv("AI_STUDIO_API_KEY"),
+        #     context_window=131072,
+        #     max_tokens=129024,
+        #     is_chat_model=True,
+        #     is_function_calling_model=False,
+        # ).as_structured_llm(ActionDecision)
+
         self.llm = OpenAILike(
-            model="qwen2.5-vl-72b-instruct",
+            model="claude37_sonnet",
             api_base=os.getenv("AI_STUDIO_BASE"),
             api_key=os.getenv("AI_STUDIO_API_KEY"),
             context_window=200000,
             is_chat_model=True,
-            is_function_calling_model=False,
-        ).as_structured_llm(ActionDecision)
-
-        # self.llm = Anthropic(
-        #     model="claude-3-5-sonnet-v2@20241022",
-        #     api_key=os.getenv("ANTHROPIC_API_KEY")
-        # ).as_structured_llm(ActionDecision)
-
-        # self.llm = Anthropic(
-        #     model="claude-3-7-sonnet-20250219",
-        #     base_url=os.getenv("GPTAPI_US_ANTHROPIC_BASE"),
-        #     api_key=os.getenv("GPTAPI_US_KEY")
-        # ).as_structured_llm(ActionDecision)
+            is_function_calling_model=True,
+        )
 
         self.memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
 
@@ -178,7 +190,7 @@ class MobileInteractionAgent(Workflow):
 你是一个以人性化方式操作移动设备来完成用户任务的MobileInteractionAgent。你的目标是分析当前截图、任务和执行历史，以决定下一步操作。
 
 屏幕信息：
-- 截图尺寸为720像素（宽）× 1280像素（高）
+- 截图尺寸为720（宽）× 1280（高）
 - 坐标原点(0, 0)位于屏幕左上角
 - x轴向右递增（x范围从0到719）
 - y轴向下递增（y范围从0到1279）
@@ -209,6 +221,8 @@ class MobileInteractionAgent(Workflow):
 - 如果任务完成，选择'done'操作，使用空参数并将is_complete设置为True
 - 如果截图不清晰或无法识别，考虑使用'screenshot'操作重新获取截图
 
+{output_example}
+
 任务：{task}
 执行历史：{history}
 """)
@@ -227,18 +241,25 @@ class MobileInteractionAgent(Workflow):
         return ScreenshotEvent(screenshot_url=screenshot_url, task=ev.task)
 
     @step
-    async def analyze_screenshot(self, ctx: Context, ev: ScreenshotEvent) -> ActionEvent | TaskCompleteEvent:
+    async def analyze_screenshot(self, ctx: Context, ev: ScreenshotEvent) -> ActionEvent | TaskCompleteEvent | ScreenshotEvent:
         task = await ctx.get("task")
         history = await ctx.get("history", default=[])
         history_summary = "\n".join(
             [f"Step {i + 1}: {h['action']} with {h['params']} -> {h['result']['message']}" for i, h in
              enumerate(history)])
 
-        # 构造 LLM 输入
-        prompt = self.system_prompt.format(
-            task=task,
-            history=history_summary or "No actions taken yet",
-        )
+        if self.llm.model == 'claude37_sonnet':
+            prompt = self.system_prompt.format(
+                task=task,
+                history=history_summary or "No actions taken yet",
+                output_example="输出格式需要符合以下JSON格式：\n{'action': 'click', 'params': {'x': 100, 'y': 200}, 'reasoning': '使用这个操作的原因', 'is_complete': False}，确保这个json是合法的，不需要有其他的内容",
+            )
+        else:
+            prompt = self.system_prompt.format(
+                task=task,
+                history=history_summary or "No actions taken yet",
+                output_example=""
+            )
 
         temp_dir = os.path.join(os.getcwd(), "tmp", "screenshots")
         # 如果文件夹不存在就创建
@@ -246,16 +267,11 @@ class MobileInteractionAgent(Workflow):
             os.makedirs(temp_dir)
         temp_image_path = os.path.join(temp_dir, f"{hash(ev.screenshot_url)}.png")
 
-        img_response = requests.get(ev.screenshot_url, verify=False)
-
-        with open(temp_image_path, 'wb') as f:
-            f.write(img_response.content)
-        # 异步下载图片
-        # async with aiohttp.ClientSession() as session:
-        #     async with session.get(ev.screenshot_url) as response:
-        #         img_content = await response.read()
-        #         with open(temp_image_path, 'wb') as f:
-        #             f.write(img_content)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(ev.screenshot_url, ssl=False) as response:
+                img_content = await response.read()
+                async with aiofiles.open(temp_image_path, 'wb') as f:
+                    await f.write(img_content)
 
         messages = [
             ChatMessage(role="system", content=prompt),
@@ -265,8 +281,6 @@ class MobileInteractionAgent(Workflow):
             ])
         ]
 
-
-
         # 获取对话历史
         chat_history = await self.memory.aget_all()
         messages = chat_history + messages
@@ -274,7 +288,16 @@ class MobileInteractionAgent(Workflow):
 
         # 调用 LLM
         response = await self.llm.achat(messages)
-        decision: ActionDecision = response.raw
+        decision: ActionDecision
+        if self.llm.model == 'claude37_sonnet':
+            try:
+                temp = json.loads(response.message.content)
+                temp['params'] = json.dumps(temp['params'])
+                decision = ActionDecision.from_json(json.dumps(temp))
+            except:
+                return ScreenshotEvent(screenshot_url=ev.screenshot_url, task=ev.task)
+        else:
+            decision = response.raw
         ctx.write_event_to_stream(
             LogEvent(msg=f"Decision: {decision.action} with params {decision.params}, Reasoning: {decision.reasoning}"))
 

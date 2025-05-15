@@ -36,7 +36,8 @@ dependencies = [
     "llama-index-llms-google-genai>=0.1.7",
     "llama-index-llms-openai>=0.3.38",
     "llama-index-llms-anthropic>=0.6.10",
-    "llama-index-llms-openai-like>=0.3.4"
+    "llama-index-llms-openai-like>=0.3.4",
+    "aiofiles>=24.1.0"
 ]
 
 [tool.hatch.build.targets.wheel]
