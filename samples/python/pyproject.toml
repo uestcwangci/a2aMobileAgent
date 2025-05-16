@@ -37,7 +37,9 @@ dependencies = [
     "llama-index-llms-openai>=0.3.38",
     "llama-index-llms-anthropic>=0.6.10",
     "llama-index-llms-openai-like>=0.3.4",
-    "aiofiles>=24.1.0"
+    "aiofiles>=24.1.0",
+    "mcp[cli]>=1.6.0",
+    "llama-index-tools-mcp>=0.1.3",
 ]
 
 [tool.hatch.build.targets.wheel]

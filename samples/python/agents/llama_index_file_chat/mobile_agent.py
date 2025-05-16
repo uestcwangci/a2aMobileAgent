@@ -1,49 +1,27 @@
 import asyncio
 import json
-from typing import Dict, List, Optional
+import os
+from enum import Enum
+from typing import Dict, Any
+from typing import List, Optional
+
 import aiofiles
 import aiohttp
-import json
-from typing import Dict, Any, List
-from llama_index.core.workflow import Workflow, Context, Event, StartEvent, StopEvent, step
-from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.base.llms.types import ChatMessage, MessageRole, TextBlock, ImageBlock
-import os
-from aliyun.instance_manager import InstanceManager
-from my_utils.logger_util import logger
 from dotenv import load_dotenv
-import ast
-import tempfile
-import requests
-import os
+from llama_index.core.base.llms.types import ChatMessage, TextBlock, ImageBlock
+from llama_index.core.llms.structured_llm import StructuredLLM
+from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.prompts import PromptTemplate
+from llama_index.core.workflow import Workflow, Context, Event, StartEvent, StopEvent, step
 from llama_index.llms.openai_like import OpenAILike
+from llama_index.tools.mcp import BasicMCPClient
 from pydantic import BaseModel, Field, model_validator
-from typing import List, Union, Optional
-from enum import Enum
-from llama_index.llms.anthropic import Anthropic
 
+from my_utils.logger_util import logger
+
+ACTION_MCP_SERVER_URL = "http://118.178.191.176:8001/sse"
 
 load_dotenv()
-
-instance_manager = InstanceManager()
-
-async def get_screenshot(ctx: Context) -> str:
-    metadata = await ctx.get("metadata", default={})
-    instance_id = metadata["instanceId"]
-    appium_action = instance_manager.get_or_create_client(instance_id)
-    return appium_action.execute("screenshot")["screenshot"]
-
-
-# execute_action 工具函数
-async def execute_action(ctx: Context, action: str, params: dict) -> Dict:
-    metadata = await ctx.get("metadata", default={})
-    instance_id = metadata["instanceId"]
-    logger.info(f"instance_id: {instance_id}")
-    appium_action = instance_manager.get_or_create_client(instance_id)
-    result = appium_action.execute(action, params)
-    return result
-
 
 class ActionType(str, Enum):
     CLICK = "click"
@@ -55,13 +33,12 @@ class ActionType(str, Enum):
     SCROLL = "scroll"
     PRESS_ENTER = "press_enter"
     PRESS_SEARCH = "press_search"
-    DONE = "done"
 
 class ActionDecision(BaseModel):
     action: ActionType = Field(description="要执行的操作")
     params: str = Field(
         title="操作参数",
-        description="执行操作要传入的JSON格式参数字符串，某些操作（如 screenshot、back、done）为空字符串",
+        description="执行操作要传入的JSON格式参数字符串，某些操作（如 screenshot、back）为空字符串",
         examples=[
             "",  # 无参数
             '{"x": 100, "y": 200}',  # click, long_press, double_click
@@ -91,7 +68,7 @@ class ActionDecision(BaseModel):
         params = values.params
 
         # 定义 action 和 params 的对应关系
-        no_params_actions = [ActionType.SCREENSHOT, ActionType.BACK, ActionType.PRESS_ENTER, ActionType.PRESS_SEARCH, ActionType.DONE]
+        no_params_actions = [ActionType.SCREENSHOT, ActionType.BACK, ActionType.PRESS_ENTER, ActionType.PRESS_SEARCH]
         coordinate_actions = [ActionType.CLICK, ActionType.LONG_PRESS, ActionType.DOUBLE_CLICK]
         type_action = [ActionType.TYPE]
         scroll_actions = [ActionType.SCROLL]
@@ -165,24 +142,25 @@ class TaskCompleteEvent(StopEvent):
 class MobileInteractionAgent(Workflow):
     def __init__(self, timeout: Optional[float] = 300.0, verbose: bool = True):
         super().__init__(timeout=timeout, verbose=verbose)
-        # self.llm = OpenAILike(
-        #     model="qwen2.5-vl-72b-instruct",
-        #     api_base=os.getenv("AI_STUDIO_BASE"),
-        #     api_key=os.getenv("AI_STUDIO_API_KEY"),
-        #     context_window=131072,
-        #     max_tokens=129024,
-        #     is_chat_model=True,
-        #     is_function_calling_model=False,
-        # ).as_structured_llm(ActionDecision)
-
         self.llm = OpenAILike(
-            model="claude37_sonnet",
+            model="qwen2.5-vl-72b-instruct",
             api_base=os.getenv("AI_STUDIO_BASE"),
             api_key=os.getenv("AI_STUDIO_API_KEY"),
-            context_window=200000,
+            context_window=131072,
+            max_tokens=129024,
             is_chat_model=True,
-            is_function_calling_model=True,
-        )
+            is_function_calling_model=False,
+        ).as_structured_llm(ActionDecision)
+
+        # self.llm = OpenAILike(
+        #     model="claude37_sonnet",
+        #     api_base=os.getenv("AI_STUDIO_BASE"),
+        #     api_key=os.getenv("AI_STUDIO_API_KEY"),
+        #     context_window=200000,
+        #     is_chat_model=True,
+        #     is_function_calling_model=True,
+        # )
+        self.client = BasicMCPClient(ACTION_MCP_SERVER_URL)
 
         self.memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
 
@@ -205,7 +183,6 @@ class MobileInteractionAgent(Workflow):
 - back：返回。描述：导航返回。参数：{}。
 - scroll：滑动 {"start": [int, int], "end": [int, int]}。描述：从起始坐标滑动到结束坐标，例如：{"start": [400, 400], "end": [500, 500]}。
 - press_enter或press_search：发送回车或搜索按键码。描述：模拟按下回车或搜索键。参数：{}。
-- done：完成任务。描述：表示任务已完成。参数：{}。
 
 复合操作
 - enter_chat: 进入聊天界面。描述：进入聊天界面。参数：{}。
@@ -218,7 +195,7 @@ class MobileInteractionAgent(Workflow):
 - 使用每个操作指定的准确参数格式
 - 对于基于坐标的操作，确保x在0到719之间，y在0到1279之间
 - 您必须在响应中设置action、params、reasoning和is_complete。即使是空字符串或空字典
-- 如果任务完成，选择'done'操作，使用空参数并将is_complete设置为True
+- 如果任务完成，将is_complete设置为True
 - 如果截图不清晰或无法识别，考虑使用'screenshot'操作重新获取截图
 
 {output_example}
@@ -226,17 +203,28 @@ class MobileInteractionAgent(Workflow):
 任务：{task}
 执行历史：{history}
 """)
+
+    async def get_screenshot(self, instance_id:str) -> str:
+        response = await self.client.call_tool("get_screenshot", {"instance_id": instance_id})
+        return response.content[0].text
+
+    # execute_action 工具函数
+    async def execute_action(self,instance_id:str, action: str, params: dict) -> Dict:
+        response = await self.client.call_tool("execute_action", {"instance_id": instance_id, "action": action, "params": params})
+        return json.loads(response.content[0].text)
+
     @step
     async def start(self, ctx: Context, ev: TaskEvent) -> ScreenshotEvent:
         ctx.write_event_to_stream(LogEvent(msg=f"Starting task: {ev.task}"))
         await ctx.set("task", ev.task)
         await ctx.set("history", [])  # 初始化执行历史
         metadata = await ctx.get("metadata", default={})
-        if not metadata["instanceId"]:
+        instance_id = metadata["instanceId"]
+        if not instance_id:
             logger.error("No instanceId provided in TaskEvent")
             raise ValueError("No instanceId provided in TaskEvent")
 
-        screenshot_url = await get_screenshot(ctx)
+        screenshot_url = await self.get_screenshot(instance_id)
         ctx.write_event_to_stream(LogEvent(msg=f"Retrieved screenshot: {screenshot_url}"))
         return ScreenshotEvent(screenshot_url=screenshot_url, task=ev.task)
 
@@ -248,7 +236,7 @@ class MobileInteractionAgent(Workflow):
             [f"Step {i + 1}: {h['action']} with {h['params']} -> {h['result']['message']}" for i, h in
              enumerate(history)])
 
-        if self.llm.model == 'claude37_sonnet':
+        if not isinstance(self.llm, StructuredLLM):
             prompt = self.system_prompt.format(
                 task=task,
                 history=history_summary or "No actions taken yet",
@@ -289,7 +277,7 @@ class MobileInteractionAgent(Workflow):
         # 调用 LLM
         response = await self.llm.achat(messages)
         decision: ActionDecision
-        if self.llm.model == 'claude37_sonnet':
+        if not isinstance(self.llm, StructuredLLM):
             try:
                 temp = json.loads(response.message.content)
                 temp['params'] = json.dumps(temp['params'])
@@ -314,7 +302,9 @@ class MobileInteractionAgent(Workflow):
     @step
     async def execute_action_step(self, ctx: Context, ev: ActionEvent) -> ActionResultEvent:
         ctx.write_event_to_stream(LogEvent(msg=f"Executing action: {ev.action} with params {ev.params}"))
-        result = await execute_action(ctx, ev.action, ev.params)
+        metadata = await ctx.get("metadata", default={})
+        instance_id = metadata["instanceId"]
+        result = await self.execute_action(instance_id, ev.action, ev.params)
         ctx.write_event_to_stream(LogEvent(msg=f"Action result: {result['message']}"))
 
         # 更新执行历史
@@ -333,7 +323,9 @@ class MobileInteractionAgent(Workflow):
         # 截图前延迟一段时间，以确保操作完成
         await asyncio.sleep(2)
         # 获取新的截图，继续任务
-        screenshot_url = await get_screenshot(ctx)
+        metadata = await ctx.get("metadata", default={})
+        instance_id = metadata["instanceId"]
+        screenshot_url = await self.get_screenshot(instance_id)
         ctx.write_event_to_stream(LogEvent(msg=f"Retrieved new screenshot: {screenshot_url}"))
         return ScreenshotEvent(screenshot_url=screenshot_url, task=ev.task)
 
