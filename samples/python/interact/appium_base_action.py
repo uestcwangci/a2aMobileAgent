@@ -467,6 +467,6 @@ class AppiumBaseAction:
 
     def home(self) -> None:
         """
-        回到应用主页。
+        回到钉钉主页。
         """
-        self.launch_app("com.alibaba.android.rimet", ".biz.LaunchHomeActivity")
+        self.call_jsapi("internal.automator", "navigateToHome")
