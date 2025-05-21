@@ -157,9 +157,11 @@ class AppiumAction(AppiumBaseAction):
         logger.info(f"Executing action: #{action}# with params: {params}")
         # 检查超时事件
         if self.driver and self.driver.timeout_event.is_set():
+            logger.warning("Driver timeout event is set")
             return {"message": "Timeout occurred previously, please start again", "success": False, "timeout": True}
         try:
             if self.driver is None:
+                logger.warning("Driver is None")
                 return {"message": "Error: Appium driver not started", "success": False}
             if action == "home":
                 # 重新启动应用
@@ -255,7 +257,7 @@ class AppiumAction(AppiumBaseAction):
             if self.driver and self.driver.timeout_event and self.driver.timeout_event.is_set():
                 self.driver = None
                 self.molecular = None
-                return {"message": f"Timeout occurred please start again: {str(e)}", "success": False, "timeout": True}
+                return {"message": f"Timeout occurred please start again", "success": False, "timeout": True}
             # Replace the selected line with this
             logger.error(f"Execution error: {str(e)}")
             return {"message": f"Error: {str(e)}", "success": False}

@@ -52,6 +52,9 @@ class AppiumDriverWrapper(Remote):
                 current_time = time.time()
                 elapsed_time = current_time - last_command_time
                 if elapsed_time > timeout_seconds:
+                    from aliyun.instance_manager import InstanceManager
+                    instance_manager = InstanceManager()
+                    instance_manager.release_client(instance_manager.get_instance_id(self.caps["udid"]))
                     if callback:
                         callback()
                     timeout_event.set()
@@ -469,4 +472,5 @@ class AppiumBaseAction:
         """
         回到钉钉主页。
         """
-        self.call_jsapi("internal.automator", "navigateToHome")
+        self.launch_app("com.alibaba.android.rimet", ".biz.LaunchHomeActivity")
+        # self.call_jsapi("internal.automator", "navigateToHome")

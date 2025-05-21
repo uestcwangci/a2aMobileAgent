@@ -42,6 +42,12 @@ class InstanceManager:
     def get_interface_ip(self, instance_id: str) -> str:
         return self.all_clients.get(instance_id, "")
 
+    def get_instance_id(self, interface_ip: str) -> str:
+        for instance_id, ip in self.all_clients.items():
+            if ip == interface_ip:
+                return instance_id
+        return ""
+
     def get_all_instances(self) -> dict[Any, Any]:
         return self.all_clients
 
