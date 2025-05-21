@@ -4,7 +4,9 @@ import os
 from enum import Enum
 from typing import Dict, Any
 from typing import List, Optional
+import re
 
+import time
 import aiofiles
 import aiohttp
 from dotenv import load_dotenv
@@ -16,12 +18,17 @@ from llama_index.core.workflow import Workflow, Context, Event, StartEvent, Stop
 from llama_index.llms.openai_like import OpenAILike
 from llama_index.tools.mcp import BasicMCPClient
 from pydantic import BaseModel, Field, model_validator
+from agents.llama_index_file_chat.agent_validation_utils.data_utils import ActionStepChecker
+from agents.llama_index_file_chat.agent_validation_utils.prompt_constants import ACTION_PROMPT
 
 from my_utils.logger_util import logger
 
 ACTION_MCP_SERVER_URL = "http://118.178.191.176:8001/sse"
 
 load_dotenv()
+
+# 验证模式配置
+AGENT_VALIDATION = os.getenv("AGENT_VALIDATION", "false").lower() == "true"
 
 class ActionType(str, Enum):
     CLICK = "click"
@@ -33,7 +40,7 @@ class ActionType(str, Enum):
     SCROLL = "scroll"
     PRESS_ENTER = "press_enter"
     PRESS_SEARCH = "press_search"
-
+    DONE = "done"
 class ActionDecision(BaseModel):
     action: ActionType = Field(description="要执行的操作")
     params: str = Field(
@@ -47,13 +54,13 @@ class ActionDecision(BaseModel):
         ]
     )
     reasoning: str = Field(description="选择该操作的推理过程")
-    is_complete: bool = Field(description="任务是否已完成")
 
     @classmethod
     def from_json(cls, json_str: str) -> 'ActionDecision':
         """
         从JSON字符串创建ActionDecision对象
         """
+        logger.info(f"kkk ActionDecision from_json json_str: {json_str!r}")
         return cls.model_validate_json(json_str)
 
     def to_json(self) -> str:
@@ -68,7 +75,7 @@ class ActionDecision(BaseModel):
         params = values.params
 
         # 定义 action 和 params 的对应关系
-        no_params_actions = [ActionType.SCREENSHOT, ActionType.BACK, ActionType.PRESS_ENTER, ActionType.PRESS_SEARCH]
+        no_params_actions = [ActionType.SCREENSHOT, ActionType.BACK, ActionType.PRESS_ENTER, ActionType.PRESS_SEARCH, ActionType.DONE]
         coordinate_actions = [ActionType.CLICK, ActionType.LONG_PRESS, ActionType.DOUBLE_CLICK]
         type_action = [ActionType.TYPE]
         scroll_actions = [ActionType.SCROLL]
@@ -114,7 +121,7 @@ class LogEvent(Event):
 
 
 class TaskEvent(StartEvent):
-    task: str  # 用户任务，例如“给小明发送你好的短信”
+    task: str  # 用户任务，例如"给小明发送你好的短信"
 
 
 class ScreenshotEvent(Event):
@@ -126,6 +133,7 @@ class ActionEvent(Event):
     action: str
     params: dict
     task: str
+    action_description: str
 
 
 class ActionResultEvent(Event):
@@ -150,7 +158,8 @@ class MobileInteractionAgent(Workflow):
             max_tokens=129024,
             is_chat_model=True,
             is_function_calling_model=False,
-        ).as_structured_llm(ActionDecision)
+        )
+        # .as_structured_llm(ActionDecision)
 
         # self.llm = OpenAILike(
         #     model="claude37_sonnet",
@@ -164,45 +173,9 @@ class MobileInteractionAgent(Workflow):
 
         self.memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
 
-        self.system_prompt = PromptTemplate("""
-你是一个以人性化方式操作移动设备来完成用户任务的MobileInteractionAgent。你的目标是分析当前截图、任务和执行历史，以决定下一步操作。
+        self.system_prompt = PromptTemplate(ACTION_PROMPT)
 
-屏幕信息：
-- 截图尺寸为720（宽）× 1280（高）
-- 坐标原点(0, 0)位于屏幕左上角
-- x轴向右递增（x范围从0到719）
-- y轴向下递增（y范围从0到1279）
-- 对于需要坐标的操作（如点击、输入、长按、双击、滑动），请确保x和y值在这些范围内
-
-可用操作：
-- click：在坐标处点击 {"x": int, "y": int}。描述：在指定坐标处点击，例如：{"x": 100, "y": 100}。
-- type：在坐标处输入文本 {"x": int, "y": int, "text": str}。描述：在指定坐标处输入文本，例如：{"x": 100, "y": 100, "text": "你好，世界！"}。
-- long_press：在坐标处长按 {"x": int, "y": int}。描述：在指定坐标处长按，例如：{"x": 200, "y": 200}。
-- screenshot：拍摄新的截图。描述：如果无法识别截图，则拍摄新的截图。参数：{}。
-- double_click：在坐标处双击 {"x": int, "y": int}。描述：在指定坐标处双击，例如：{"x": 300, "y": 300}。
-- back：返回。描述：导航返回。参数：{}。
-- scroll：滑动 {"start": [int, int], "end": [int, int]}。描述：从起始坐标滑动到结束坐标，例如：{"start": [400, 400], "end": [500, 500]}。
-- press_enter或press_search：发送回车或搜索按键码。描述：模拟按下回车或搜索键。参数：{}。
-
-复合操作
-- enter_chat: 进入聊天界面。描述：进入聊天界面。参数：{}。
-
-规则：
-- 分析截图URL以理解当前屏幕上下文
-- 如果没有指定App，默认使用钉钉
-- 考虑任务和执行历史来决定下一步操作
-- 为您的操作选择提供清晰的理由说明
-- 使用每个操作指定的准确参数格式
-- 对于基于坐标的操作，确保x在0到719之间，y在0到1279之间
-- 您必须在响应中设置action、params、reasoning和is_complete。即使是空字符串或空字典
-- 如果任务完成，将is_complete设置为True
-- 如果截图不清晰或无法识别，考虑使用'screenshot'操作重新获取截图
-
-{output_example}
-
-任务：{task}
-执行历史：{history}
-""")
+        self.action_step_checker = None
 
     async def get_screenshot(self, instance_id:str) -> str:
         response = await self.client.call_tool("get_screenshot", {"instance_id": instance_id})
@@ -216,13 +189,19 @@ class MobileInteractionAgent(Workflow):
     @step
     async def start(self, ctx: Context, ev: TaskEvent) -> ScreenshotEvent:
         ctx.write_event_to_stream(LogEvent(msg=f"Starting task: {ev.task}"))
+        task_id = hash(ev.task+str(time.time()))
+
         await ctx.set("task", ev.task)
         await ctx.set("history", [])  # 初始化执行历史
+        await ctx.set("task_id", task_id)
+
         metadata = await ctx.get("metadata", default={})
         instance_id = metadata["instanceId"]
         if not instance_id:
             logger.error("No instanceId provided in TaskEvent")
             raise ValueError("No instanceId provided in TaskEvent")
+        
+        self.action_step_checker = ActionStepChecker(task=ev.task, task_id=task_id)
 
         screenshot_url = await self.get_screenshot(instance_id)
         ctx.write_event_to_stream(LogEvent(msg=f"Retrieved screenshot: {screenshot_url}"))
@@ -233,20 +212,20 @@ class MobileInteractionAgent(Workflow):
         task = await ctx.get("task")
         history = await ctx.get("history", default=[])
         history_summary = "\n".join(
-            [f"Step {i + 1}: {h['action']} with {h['params']} -> {h['result']['message']}" for i, h in
+            [f"Step {i + 1}: {h['action']} with {h['params']} -> {h['result']['message']} -> action_description:{h['action_description']}" for i, h in
              enumerate(history)])
 
         if not isinstance(self.llm, StructuredLLM):
             prompt = self.system_prompt.format(
                 task=task,
                 history=history_summary or "No actions taken yet",
-                output_example="输出格式需要符合以下JSON格式：\n{'action': 'click', 'params': {'x': 100, 'y': 200}, 'reasoning': '使用这个操作的原因', 'is_complete': False}，确保这个json是合法的，不需要有其他的内容",
+                output_example="输出格式需要符合以下JSON格式：\n{'action': 'click', 'params': {'x': 100, 'y': 200}, 'reasoning': '使用这个操作的原因，不要使用除文字以外的特殊字符'} \n 确保这个json是合法的，不需要有其他的内容",
             )
         else:
             prompt = self.system_prompt.format(
                 task=task,
                 history=history_summary or "No actions taken yet",
-                output_example=""
+                output_example="输出格式需要符合以下JSON格式：\n{'action': 'click', 'params': {'x': 100, 'y': 200}, 'reasoning': '使用这个操作的原因，不要使用除文字以外的特殊字符'} \n 确保这个json是合法的，不需要有其他的内容"
             )
 
         temp_dir = os.path.join(os.getcwd(), "tmp", "screenshots")
@@ -274,30 +253,49 @@ class MobileInteractionAgent(Workflow):
         messages = chat_history + messages
         ctx.write_event_to_stream(LogEvent(msg="Analyzing screenshot and task..."))
 
-        # 调用 LLM
-        response = await self.llm.achat(messages)
-        decision: ActionDecision
-        if not isinstance(self.llm, StructuredLLM):
-            try:
-                temp = json.loads(response.message.content)
-                temp['params'] = json.dumps(temp['params'])
-                decision = ActionDecision.from_json(json.dumps(temp))
-            except:
-                return ScreenshotEvent(screenshot_url=ev.screenshot_url, task=ev.task)
-        else:
-            decision = response.raw
-        ctx.write_event_to_stream(
-            LogEvent(msg=f"Decision: {decision.action} with params {decision.params}, Reasoning: {decision.reasoning}"))
+        try:
+            # 调用 LLM
+            response = await self.llm.achat(messages)
+            logger.info(f"kkk LLM response raw: {response.raw!r}")
+            decision: ActionDecision
+            if not isinstance(self.llm, StructuredLLM):
+                try:
+                    content = repair_json_string(response.message.content)
+                    temp = json.loads(content)
+                    # 确保 params 是字符串格式
+                    if isinstance(temp.get('params'), dict):
+                        temp['params'] = json.dumps(temp['params'])
+                    decision = ActionDecision.from_json(json.dumps(temp))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Failed to parse LLM response. Raw response: {response.message.content!r}")
+                    logger.error(f"Parse error details: {str(e)}")
+                    return ScreenshotEvent(screenshot_url=ev.screenshot_url, task=ev.task)
+            else:
+                decision = response.raw
 
-        # 函数结束后可以选择删除临时文件
-        os.remove(temp_image_path)
-        # 更新对话历史
-        self.memory.put(response.message)
+            ctx.write_event_to_stream(
+                LogEvent(msg=f"Decision: {decision.action} with params {decision.params}, Reasoning: {decision.reasoning}"))
 
-        if decision.is_complete:
-            return TaskCompleteEvent(response=f"Task completed: {decision.reasoning}", history=history)
+            if AGENT_VALIDATION:
+                # 保存过程图片
+                self.action_step_checker.save_process_screenshot(temp_image_path)
+            else:   
+                # 函数结束后可以选择删除临时文件
+                os.remove(temp_image_path)
+            # 更新对话历史
+            self.memory.put(response.message)
 
-        return ActionEvent(action=decision.action, params=decision.get_parsed_params(), task=task)
+            if decision.action == ActionType.DONE:
+                return TaskCompleteEvent(response=f"Task completed: {decision.reasoning}", history=history)
+
+            return ActionEvent(action=decision.action, params=decision.get_parsed_params(), task=task, action_description=decision.reasoning)
+
+        except Exception as e:
+            logger.error(f"Error in analyze_screenshot: {str(e)}")
+            logger.error(f"Full error details:", exc_info=True)
+            if hasattr(e, '__dict__'):
+                logger.error(f"Error attributes: {e.__dict__}")
+            return ScreenshotEvent(screenshot_url=ev.screenshot_url, task=ev.task)
 
     @step
     async def execute_action_step(self, ctx: Context, ev: ActionEvent) -> ActionResultEvent:
@@ -309,7 +307,7 @@ class MobileInteractionAgent(Workflow):
 
         # 更新执行历史
         history = await ctx.get("history", default=[])
-        history.append({"action": ev.action, "params": ev.params, "result": result})
+        history.append({"action": ev.action, "params": ev.params, "result": result, "action_description": ev.action_description})
         await ctx.set("history", history)
 
         return ActionResultEvent(result=result, task=ev.task)
@@ -328,7 +326,65 @@ class MobileInteractionAgent(Workflow):
         screenshot_url = await self.get_screenshot(instance_id)
         ctx.write_event_to_stream(LogEvent(msg=f"Retrieved new screenshot: {screenshot_url}"))
         return ScreenshotEvent(screenshot_url=screenshot_url, task=ev.task)
+    
+    async def execute_back_home(self, instance_id:str):
+        await self.execute_action(instance_id, "home", {})
 
+def repair_json_string(json_str: str) -> Optional[str]:
+    """
+    修复常见的JSON格式问题
+    1. 处理缺少引号的键
+    2. 处理多余的逗号
+    3. 处理单引号
+    4. 处理布尔值
+    5. 处理数组格式问题
+    6. 处理括号匹配问题
+    """
+    original_json_str = json_str
+    try:
+        # 尝试直接解析，如果成功则返回
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError:
+        pass
+
+    # 1. 处理缺少引号的键
+    json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
+    
+    # 2. 处理单引号
+    json_str = json_str.replace("'", '"')
+    
+    # 3. 处理布尔值
+    json_str = re.sub(r':\s*true\s*([,}])', r': true\1', json_str)
+    json_str = re.sub(r':\s*false\s*([,}])', r': false\1', json_str)
+    
+    # 4. 处理数组格式问题
+    json_str = re.sub(r'\[\s*([^]]*?)\s*\]', lambda m: '[' + m.group(1).strip() + ']', json_str)
+    
+    # 5. 处理多余的逗号
+    json_str = re.sub(r',\s*}', '}', json_str)
+    json_str = re.sub(r',\s*]', ']', json_str)
+
+    # 6. 处理括号匹配问题
+    # 处理对象中的中括号，但排除正常的数组格式
+    # 只处理包含键值对的中括号
+    json_str = re.sub(r'([{,])\s*"([^"]+)"\s*:\s*\[([^]]*?)([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([^]]+)\]', r'\1"\2": {\3"\4": \5}', json_str)
+    # 处理数组中的大括号
+    json_str = re.sub(r'\[\s*{([^}]+)}\s*\]', r'[{\1}]', json_str)
+    
+    # 7. 处理错误的中括号闭合
+    # 处理对象中错误使用中括号闭合的情况
+    json_str = re.sub(r'([{,])\s*"([^"]+)"\s*:\s*([^,}]+)\]', r'\1"\2": \3}', json_str)
+    
+    try:
+        # 验证修复后的JSON是否有效
+        json.loads(json_str)
+        logger.info(f"repair JSON: from {original_json_str} to {json_str}")
+        return json_str
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to repair JSON: {json_str}")
+        logger.error(f"Repair error: {str(e)}")
+        return None
 
 async def main():
     """测试 MobileInteractionAgent"""
@@ -350,6 +406,68 @@ async def main():
     for i, step in enumerate(result.history):
         print(f"Step {i + 1}: {step['action']} with {step['params']} -> {step['result']['message']}")
 
+async def main_validation(json_name:str):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(current_dir, "agent_validation_utils", "test_datas", f"{json_name}.json")
+    with open(json_path, "r") as f:
+        diff_level_array = json.load(f)
+    for diff_jo in diff_level_array:
+        await single_run(diff_jo)
+    ActionStepChecker.gen_stats_report()
+
+async def single_run(diff_jo: dict):
+    '''
+    {
+    "task_id": "modify_status_to_empty",
+    "instruction": "修改我的状态为无状态",
+    "diff_level": "1",
+    "rubrics": [
+      "中间步骤出现「我的状态」页面",
+      "「我的状态」页面中，「无状态」处于选中状态",
+      "如果最后在首页，那么左上角的头像中右下角显示电脑或者手机设备的图标，而不是一个emoji",
+      "如果最后是在「我的」页面，那么在资料卡片中显示 (+状态...),这表示当前是无状态"
+    ],
+    "goldStep": 5,
+    "reset": "set_work_status_to_vacation"
+  }
+    '''
+
+    """测试 MobileInteractionAgent"""
+    agent = MobileInteractionAgent()
+    ctx = Context(agent)
+    instance_id = "acp-9nfh0qgrttkkfi6kc"
+    await ctx.set("metadata", {"instanceId": instance_id}) # 验证模式下使用的设备
+
+    try:
+        # 从diff_jo中获取task并使用校验数据
+        task = diff_jo["instruction"]
+        await ctx.set("diff_jo", diff_jo)
+        handler = agent.run(start_event=TaskEvent(task=task), ctx=ctx)
+
+        async for event in handler.stream_events():
+            if isinstance(event, LogEvent):
+                print(f"Log: {event.msg}")
+
+        result: TaskCompleteEvent = await handler
+        print(f"Final Response: {result.response}")
+        print("Execution History:")
+        for i, step in enumerate(result.history):
+            print(f"Step {i + 1}: {step['action']} with {step['params']} -> {step['result']['message']}")
+
+        # 检查最终结果是否符合预期
+        await agent.action_step_checker.check_final_result(diff_jo, result.history)
+
+        await agent.execute_back_home(instance_id)
+
+        # 等待1.5秒
+        await asyncio.sleep(1.5)
+
+    except Exception as e:
+        logger.error(f"Error during execution: {e}")
+        raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if not AGENT_VALIDATION:
+        asyncio.run(main())
+    else:
+        asyncio.run(main_validation('diff_level_t'))

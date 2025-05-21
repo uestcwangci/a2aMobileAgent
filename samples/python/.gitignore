@@ -12,3 +12,8 @@ wheels/
 .DS_Store
 
 .env
+
+logs/
+agents/llama_index_file_chat/logs/
+agents/llama_index_file_chat/tmp/
+venv/

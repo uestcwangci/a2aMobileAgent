@@ -1,0 +1,139 @@
+[
+  {
+    "task_id": "send_business_card_to_user",
+    "instruction": "给梦垚发送我的名片",
+    "diff_level": "2",
+    "rubrics": [
+      "打开和梦垚的聊天窗口,而不是其他人的",
+      "在聊天记录中出现已发送名片的信息"
+    ],
+    "goldStep": 7,
+    "reference_operations": [
+      "1.[ENTER_SINGLE_CHAT]打开梦垚的聊天框",
+      "2.[CLICK]点击右下角的加号",
+      "3.[SCROLL]向左滚动底部菜单",
+      "4.[SCROLL]向左滚动底部菜单",
+      "5.[CLICK]点击钉钉名片",
+      "6.[CLICK]点击确定按钮发送名片]",
+      "7.[DONE]"
+    ]
+  },
+  {
+    "task_id": "send_message_to_all",
+    "instruction": "在'X项目小组'群聊中@所有人，说：今天中午聚餐",
+    "diff_level": "2",
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "发送后群聊显示消息内容：@所有人 今天中午聚餐",
+      "这条消息是我发送的最后一条消息",
+      "这条消息@了所有人,'@所有人'是蓝色的才代表@生效"
+    ],
+    "goldStep": 7
+  },
+  {
+    "task_id": "modify_group_message_setting",
+    "instruction": "将X项目小组的群消息设置为免打扰",
+    "diff_level": "2",
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "消息免打扰右侧的switch处于开启状态(背景色为蓝色，而不是灰色)"
+    ],
+    "goldStep": 6,
+    "reference_operations": [
+      "1.进入「X项目小组」",
+      "2.点击右上角的「···」按钮",
+      "3.向下滚动页面找到消息免打扰",
+      "4.可能需要滚动两次",
+      "5.点击消息免打扰右侧的switch开关"
+    ],
+    "reset": "reset_group_mute"
+  },
+  {
+    "task_id": "modify_status",
+    "instruction": "修改状态为请勿打扰",
+    "diff_level": "2",
+    "goldStep": 8,
+    "rubrics": [
+      "中间步骤出现「我的状态」页面",
+      "「我的状态」页面中，「请勿打扰」处于选中状态",
+      "最后在首页左上角的头像中，右下角有🔕的emoji"
+    ],
+    "reference_operations": [
+      "1.[HOME]点击首页",
+      "2.[CLICK]点击右上角的头像",
+      "3.[CLICK]点击状态栏",
+      "4.[SCROLL]向下滑动",
+      "5.[CLICK]选中请勿打扰",
+      "6.[CLICK]点击右上角的确定按钮",
+      "7.[CLICK]点击提示弹窗中的确定，确认修改",
+      "8.[DONE]"
+    ],
+    "reset": "set_work_status_to_vacation"
+  },
+  {
+    "task_id": "create_blank_doc",
+    "instruction": "新建一个空白文档",
+    "diff_level": "2",
+    "goldStep": 5,
+    "rubrics": [
+      "新建的是文档，而不是表格或其他",
+      "显示文档标题为：无标题文档(X),这是默认的标题文档"
+    ]
+  },
+  {
+    "task_id": "invite_user_to_group",
+    "instruction": "进入X项目组群聊，拉学霸机器人进群",
+    "diff_level": "2",
+    "goldStep": 7,
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "在联系人列表中，选中了学霸机器人",
+      "在最终的群设置页面，全部群成员中，包含学霸机器人"
+    ]
+  },
+  {
+    "task_id": "remove_user_from_group",
+    "instruction": "进入X项目组群聊，删除学霸机器人",
+    "diff_level": "2",
+    "goldStep": 7,
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "中途出现了确认移除的弹窗，并点击了确定按钮",
+      "在最终的群设置页面，全部群成员中，不包含学霸机器人"
+    ]
+  },
+  {
+    "task_id": "send_group_notice",
+    "instruction": "在X项目小组群发群公告：今天中午聚餐",
+    "diff_level": "2",
+    "goldStep": 9,
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "在聊天记录中出现发送群公告的消息记录",
+      "消息内容为：今天中午聚餐",
+      "确认点击了发布按钮，点击成功的表现是再次回到群设置页"
+    ]
+  },
+  {
+    "task_id": "create_todo",
+    "instruction": "帮我创建一个待办，内容是写周报，今天内完成",
+    "diff_level": "2",
+    "goldStep": 7,
+    "rubrics": [
+      "在新建待办页面中：待办事项是写周报",
+      "在新建待办页面中显示今天某个时间截止",
+      "确认点击了新建按钮，点击成功的表现是再次回到消息列表页"
+    ]
+  },
+  {
+    "task_id": "send_dynamic",
+    "instruction": "帮我发布一条动态，内容是：AI测试",
+    "diff_level": "2",
+    "goldStep": 7,
+    "rubrics": [
+      "最终显示动态页面，在动态中有我发布的一条动态",
+      "我的名字是DingManus，发布内容是：AI测试"
+      
+    ]
+  }
+]

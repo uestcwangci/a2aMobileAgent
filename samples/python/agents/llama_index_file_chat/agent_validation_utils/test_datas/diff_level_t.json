@@ -1,0 +1,23 @@
+[
+  {
+    "task_id": "open_work_bench",
+    "instruction": "切换到工作台页面",
+    "diff_level": "1",
+    "rubrics": ["底部导航栏，「工作台」处于选中状态(背景色为蓝色)"],
+    "goldStep": 2,
+    "reset": ""
+  },
+  {
+    "task_id": "modify_status_to_empty",
+    "instruction": "修改我的状态为无状态",
+    "diff_level": "1",
+    "rubrics": [
+      "中间步骤出现「我的状态」页面",
+      "「我的状态」页面中，「无状态」处于选中状态",
+      "如果最后在首页，那么左上角的头像中右下角显示电脑或者手机设备的图标，而不是一个emoji",
+      "如果最后是在「我的」页面，那么在资料卡片中显示 (+状态...),这表示当前是无状态"
+    ],
+    "goldStep": 5,
+    "reset": "set_work_status_to_vacation"
+  }
+]

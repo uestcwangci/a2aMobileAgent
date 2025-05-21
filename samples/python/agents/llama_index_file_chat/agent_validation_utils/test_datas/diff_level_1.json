@@ -1,0 +1,102 @@
+[
+  {
+    "task_id": "open_work_bench",
+    "instruction": "切换到工作台页面",
+    "diff_level": "1",
+    "rubrics": ["底部导航栏，「工作台」处于选中状态(背景色为蓝色)"],
+    "goldStep": 2,
+    "reset": ""
+  },
+  {
+    "task_id": "modify_status_to_empty",
+    "instruction": "修改我的状态为无状态",
+    "diff_level": "1",
+    "rubrics": [
+      "中间步骤出现「我的状态」页面",
+      "「我的状态」页面中，「无状态」处于选中状态",
+      "如果最后在首页，那么左上角的头像中右下角显示电脑或者手机设备的图标，而不是一个emoji",
+      "如果最后是在「我的」页面，那么在资料卡片中显示 (+状态...),这表示当前是无状态"
+    ],
+    "goldStep": 5,
+    "reset": "set_work_status_to_vacation"
+  },
+  {
+    "task_id": "open_ai_assistant",
+    "instruction": "打开AI助理",
+    "diff_level": "1",
+    "rubrics": ["打开了AI助理的聊天框"],
+    "goldStep": 2,
+    "reset": ""
+  },
+  {
+    "task_id": "open_group_chat",
+    "instruction": "帮我打开X项目小组的群聊",
+    "diff_level": "1",
+    "goldStep": 2,
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "最后停留在「X项目小组」的聊天窗口"
+    ]
+  },
+  {
+    "task_id": "send_emoji_in_group",
+    "instruction": "在'X项目小组'群聊中发送一个表示'ok'的表情",
+    "diff_level": "1",
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "聊天窗口的最后一条消息是'ok'的表情"
+    ],
+    "goldStep": 5
+  },
+  {
+    "task_id": "send_message_in_group",
+    "instruction": "在'X项目小组'群聊中消息：项目已上线，明天大家休假",
+    "diff_level": "1",
+    "rubrics": [
+      "打开和「X项目小组」的聊天窗口,而不是其他群或其他联系人",
+      "发送后群聊显示消息内容：项目已上线，明天大家休假",
+      "这条消息的发送时间接近于当前时间"
+    ],
+    "goldStep": 4
+  },
+  {
+    "task_id": "view_unread_messages",
+    "instruction": "打开未读消息列表",
+    "diff_level": "1",
+    "goldStep": 2,
+    "rubrics": ["当前处于消息列表页面", "消息类型tab栏，「未读」处于选中状态"]
+  },
+  {
+    "task_id": "send_single_chat_message",
+    "instruction": "给梦垚发送一条消息，内容为‘下午三点开会--测试’。",
+    "diff_level": "1",
+    "rubrics": [
+      "打开和梦垚的聊天窗口,而不是其他人的",
+      "在聊天记录中出现消息‘下午三点开会--测试’。",
+      "‘下午三点开会--测试’这条消息是最后一条发送的，而不是之前就已经发送"
+    ],
+    "goldStep": 5
+  },
+  {
+    "task_id": "open_my_dynamic",
+    "instruction": "打开我的动态页面",
+    "diff_level": "1",
+    "goldStep": 2,
+    "rubrics": ["当前处于我的动态页面", "从底部导航栏「我的」进入动态页面"]
+  },
+  {
+    "task_id": "call_user",
+    "instruction": "给梦垚打语音电话",
+    "diff_level": "1",
+    "goldStep": 4,
+    "rubrics": [
+      "打开和梦垚的聊天窗口,而不是其他人的",
+      "成功拨出电话，出现呼叫梦垚的打电话界面"
+    ],
+    "reference_operations": [
+      "1.[ENTER_SINGLE_CHAT]打开梦垚的聊天框",
+      "2.[CLICK]点击右上角的电话按钮",
+      "3.[CLICK]在选项页点击「语音通话」"
+    ]
+  }
+]
