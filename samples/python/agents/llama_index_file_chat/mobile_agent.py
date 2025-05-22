@@ -7,6 +7,7 @@ from typing import List, Optional
 import re
 
 import time
+from agents.llama_index_file_chat.agent_validation_utils import mcp_utils
 import aiofiles
 import aiohttp
 from dotenv import load_dotenv
@@ -20,6 +21,10 @@ from llama_index.tools.mcp import BasicMCPClient
 from pydantic import BaseModel, Field, model_validator
 from agents.llama_index_file_chat.agent_validation_utils.data_utils import ActionStepChecker
 from agents.llama_index_file_chat.agent_validation_utils.prompt_constants import ACTION_PROMPT
+from llama_index.core.types import (
+    BaseOutputParser
+)
+from typing import Any
 
 from my_utils.logger_util import logger
 
@@ -145,6 +150,16 @@ class TaskCompleteEvent(StopEvent):
     response: str
     history: List[Dict]
 
+class CustomJSONParser(BaseOutputParser):
+    def parse(self, output: str) -> Any:
+        # 尝试修正常见的JSON格式错误
+        logger.info(f"kkk CustomJSONParser parse output: {output!r}")
+        output = repair_json_string(output)
+        logger.info(f"kkk CustomJSONParser parse output after repair: {output!r}")
+        # 解析JSON
+        return output
+
+MAX_STEPS = 10
 
 # MobileInteractionAgent 工作流
 class MobileInteractionAgent(Workflow):
@@ -160,6 +175,7 @@ class MobileInteractionAgent(Workflow):
             is_function_calling_model=False,
         )
         # .as_structured_llm(ActionDecision)
+        # TODO 使用structured_llm尝试使用自定义output_parser
 
         # self.llm = OpenAILike(
         #     model="claude37_sonnet",
@@ -177,14 +193,28 @@ class MobileInteractionAgent(Workflow):
 
         self.action_step_checker = None
 
+        self.running_steps = 0
+
+        self.mcp_client = mcp_utils.MCPClient()
+
     async def get_screenshot(self, instance_id:str) -> str:
-        response = await self.client.call_tool("get_screenshot", {"instance_id": instance_id})
-        return response.content[0].text
+        try:
+            response = await self.client.call_tool("get_screenshot", {"instance_id": instance_id})
+            return response.content[0].text
+        except Exception as e:
+            logger.warning(f"First screenshot attempt failed: {str(e)}. Retrying once...")
+            response = await self.client.call_tool("get_screenshot", {"instance_id": instance_id})
+            return response.content[0].text
 
     # execute_action 工具函数
     async def execute_action(self,instance_id:str, action: str, params: dict) -> Dict:
-        response = await self.client.call_tool("execute_action", {"instance_id": instance_id, "action": action, "params": params})
-        return json.loads(response.content[0].text)
+        try:
+            response = await self.client.call_tool("execute_action", {"instance_id": instance_id, "action": action, "params": params})
+            return json.loads(response.content[0].text)
+        except Exception as e:
+            logger.warning(f"First execute_action attempt failed: {str(e)}. Retrying once...")
+            response = await self.client.call_tool("execute_action", {"instance_id": instance_id, "action": action, "params": params})
+            return json.loads(response.content[0].text)
 
     @step
     async def start(self, ctx: Context, ev: TaskEvent) -> ScreenshotEvent:
@@ -303,6 +333,7 @@ class MobileInteractionAgent(Workflow):
         metadata = await ctx.get("metadata", default={})
         instance_id = metadata["instanceId"]
         result = await self.execute_action(instance_id, ev.action, ev.params)
+        self.running_steps += 1
         ctx.write_event_to_stream(LogEvent(msg=f"Action result: {result['message']}"))
 
         # 更新执行历史
@@ -314,9 +345,12 @@ class MobileInteractionAgent(Workflow):
 
     @step
     async def check_completion(self, ctx: Context, ev: ActionResultEvent) -> ScreenshotEvent | TaskCompleteEvent:
+        history = await ctx.get("history", default=[])
         if not ev.result["success"]:
-            history = await ctx.get("history", default=[])
             return TaskCompleteEvent(response=f"Task failed: {ev.result['message']}", history=history)
+        
+        if self.running_steps >= MAX_STEPS:
+            return TaskCompleteEvent(response=f"Task completed: over max steps", history=history)
 
         # 截图前延迟一段时间，以确保操作完成
         await asyncio.sleep(2)
@@ -352,7 +386,7 @@ def repair_json_string(json_str: str) -> Optional[str]:
     json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
     
     # 2. 处理单引号
-    json_str = json_str.replace("'", '"')
+    json_str = json_str.replace("\\'", '')
     
     # 3. 处理布尔值
     json_str = re.sub(r':\s*true\s*([,}])', r': true\1', json_str)
@@ -464,10 +498,9 @@ async def single_run(diff_jo: dict):
 
     except Exception as e:
         logger.error(f"Error during execution: {e}")
-        raise
 
 if __name__ == "__main__":
     if not AGENT_VALIDATION:
         asyncio.run(main())
     else:
-        asyncio.run(main_validation('diff_level_t'))
+        asyncio.run(main_validation('diff_level_1'))

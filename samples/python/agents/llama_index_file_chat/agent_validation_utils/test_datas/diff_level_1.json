@@ -86,15 +86,15 @@
   },
   {
     "task_id": "call_user",
-    "instruction": "给梦垚打语音电话",
+    "instruction": "给理致打语音电话",
     "diff_level": "1",
     "goldStep": 4,
     "rubrics": [
-      "打开和梦垚的聊天窗口,而不是其他人的",
-      "成功拨出电话，出现呼叫梦垚的打电话界面"
+      "打开和理致的聊天窗口,而不是其他人的",
+      "成功拨出电话，出现呼叫理致的打电话界面"
     ],
     "reference_operations": [
-      "1.[ENTER_SINGLE_CHAT]打开梦垚的聊天框",
+      "1.[ENTER_SINGLE_CHAT]打开理致的聊天框",
       "2.[CLICK]点击右上角的电话按钮",
       "3.[CLICK]在选项页点击「语音通话」"
     ]

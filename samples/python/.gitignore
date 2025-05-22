@@ -13,7 +13,13 @@ wheels/
 
 .env
 
+# Logs and temporary files
 logs/
+tmp/
+**/logs/
+**/tmp/
 agents/llama_index_file_chat/logs/
 agents/llama_index_file_chat/tmp/
 venv/
+*.png
+*.csv

@@ -46,11 +46,14 @@ class TaskCompletionAnalyzer:
             label_map = {True: 'Completed', False: 'Incomplete'}
             labels = [label_map[idx] for idx in completion_counts.index]
             
+            # 确保颜色顺序与标签顺序一致
+            colors = ['#2ecc71' if label == 'Completed' else '#e74c3c' for label in labels]
+            
             plt.figure(figsize=(10, 8))
             plt.pie(completion_counts, 
                     labels=labels,
                     autopct='%1.1f%%',
-                    colors=['#e74c3c', '#2ecc71'],
+                    colors=colors,  # 使用新的颜色列表
                     startangle=90)
             
             plt.title('Mobile-RPA-Agent Task Completion Statistics')
@@ -118,8 +121,8 @@ if __name__ == "__main__":
     analyzer = TaskCompletionAnalyzer()
     
     # 示例：添加一些任务结果
-    analyzer.add_task_result("Task A", "001", False, "Successfully completed")
-    analyzer.add_task_result("Task A", "002", False, "Failed due to error")
+    analyzer.add_task_result("Task A", "001", True, "Successfully completed")
+    analyzer.add_task_result("Task A", "002", True, "Failed due to error")
     analyzer.add_task_result("Task B", "003", True, "Completed on time")
     analyzer.add_task_result("Task B", "004", True, "Completed with no issues")
     
