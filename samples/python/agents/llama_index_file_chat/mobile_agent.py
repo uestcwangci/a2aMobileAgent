@@ -349,7 +349,7 @@ class MobileInteractionAgent(Workflow):
         if not ev.result["success"]:
             return TaskCompleteEvent(response=f"Task failed: {ev.result['message']}", history=history)
         
-        if self.running_steps >= MAX_STEPS:
+        if AGENT_VALIDATION & self.running_steps >= MAX_STEPS:
             return TaskCompleteEvent(response=f"Task completed: over max steps", history=history)
 
         # 截图前延迟一段时间，以确保操作完成
