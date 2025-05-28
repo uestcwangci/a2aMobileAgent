@@ -45,7 +45,6 @@ class DingTalkHelper(AppiumBaseAction):
     def __init__(self, udid: str):
         super().__init__(udid=udid)
         self.desired_caps['appPackage'] = 'com.alibaba.android.rimet'
-        self.desired_caps['appActivity'] = '.biz.LaunchHomeActivity'
         self.driver = session_manager.create_session(self.desired_caps)
         self.molecular = Molecular(self.udid, driver=self.driver)
         logger.info("Appium driver initialized")
@@ -54,20 +53,35 @@ class DingTalkHelper(AppiumBaseAction):
         try:
             if not req:
                 return {'success': False, 'message': 'req is empty'}
+            # 等待jsapi广播service加载完成
+            time.sleep(10)
             process_name = []
-            for agent_item in req.agent:
-                parsed_url = urlparse(agent_item.url)
+            for i in range(len(req.url)):
+                if not req.url[i]:
+                    continue
+                    # return {'success': False, 'message': f'URL at index {i} is empty'}
+                if not req.name[i]:
+                    continue  # 跳过无效的名称
+                    # return {'success': False, 'message': f'Name at index {i} is empty'}
+                parsed_url = urlparse(req.url[i])
                 if not parsed_url.scheme or not parsed_url.netloc:
-                    return {'success': False, 'message': f'Invalid URL format: {agent_item.url}'}
-                self.call_jsapi("biz.util", "openLink", {"url": parsed_url})
-                time.sleep(10)  # 等待页面加载
-                process_name.append(agent_item.name)
+                    continue  # 跳过无效的URL
+                    # return {'success': False, 'message': f'Invalid URL format: {req.url[i]}'}
+
+                self.call_jsapi("biz.util", "openLink", {"url": parsed_url.geturl()})
+                time.sleep(6)  # 等待页面加载
+                self.driver.tap([(627, 459)])
+                time.sleep(2)
+                self.driver.tap([(620, 686)])
+                time.sleep(2)
+                process_name.append(req.name[i])
                 self.driver.back()  # 返回上一页
                 time.sleep(2)
-            self.molecular.execute("enter_group_chat", {"value":"五常街道第一届弱智杯羽毛球赛"})
+
+            self.molecular.execute("enter_group_chat", {"value":"容器与开放快乐拼"})
             self.wait_for_find(AppiumBy.ID, "com.alibaba.android.rimet:id/layout_text_content", timeout=10).click()
             self.wait_for_find(AppiumBy.ID, "com.alibaba.android.rimet:id/rich_edit_text", timeout=10).send_keys(
-                f"📈Agent UV涨涨涨: {'，'.join(process_name)}")
+                f"Agent UV: {'，'.join(process_name)}")
             self.wait_for_find(AppiumBy.ID, "com.alibaba.android.rimet:id/btn_send", timeout=10).click()
             return {'success': True, 'message': 'Agent UV added successfully'}
         except:
