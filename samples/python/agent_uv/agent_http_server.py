@@ -7,6 +7,7 @@ from data_class import AgentRequest
 from dingtalk import DingTalkHelper
 from my_utils.logger_util import logger
 import time
+import random  # 新增 random 模块用于随机延迟
 
 app = FastAPI()
 
@@ -31,11 +32,14 @@ async def process_single_agent(agent_req: AgentRequest, udid: str) -> Dict[str, 
 
 async def process_agent(agent_req: AgentRequest):
     semaphore = asyncio.Semaphore(5)  # 限制为 5 个并发任务
-    async def limited_process_single_agent(agent_req: AgentRequest, udid: str) -> Dict[str, str]:
+    async def limited_process_single_agent(agent_req: AgentRequest, udid: str, delay: float) -> Dict[str, str]:
+        # 在任务开始前添加延迟
+        await asyncio.sleep(delay)
         async with semaphore:
             return await process_single_agent(agent_req, udid)
 
-    tasks = [limited_process_single_agent(agent_req, udid) for udid in udid_list]
+    # 为每个任务生成一个随机延迟（例如 0 到 120 秒之间），CPU削峰
+    tasks = [limited_process_single_agent(agent_req, udid, random.uniform(0, 120)) for udid in udid_list]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # 记录所有结果
